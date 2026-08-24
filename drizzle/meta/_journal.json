@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787595187513,
+      "tag": "0000_chubby_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787595219018,
+      "tag": "0001_version_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787595358785,
+      "tag": "0002_external_fks",
+      "breakpoints": true
+    }
+  ]
+}
