@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "docker compose -f docker-compose.dev.yml up --build",
-    "migrate": "node src/db/migrate.js",
+    "migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
     "start": "docker compose up --build"
   },
   "keywords": [],
@@ -14,9 +16,12 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
-    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
   }
 }

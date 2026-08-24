@@ -7,14 +7,6 @@ import qrcode from "qrcode";
 const router = express.Router();
 
 
-const userDatabase = {
-    username: "devesh",
-    password: "devesh",
-    mfaSecret: null,
-    isMfaEnabled: false
-};
-
-
 router.post("/login", async (req, res) => {
     console.log("Logging user")
     console.log(req.body)
@@ -87,6 +79,8 @@ router.post("/logout", (req, res) => {
 router.get("/me", (req, res) => {
     console.log(userDatabase);
     console.log("Hello, user");
+
+    res.send("Hello")
 });
 
 export default router;
