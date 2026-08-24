@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: DMS-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    networks:
+      - internal
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: DMS
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  redis:
+    image: redis:8-alpine
+    container_name: DMS-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: dockerfile.dev
+    container_name: DMS-api
+
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+    environment:
+      PORT: 3000
+
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
+      REDIS_URL: redis://redis:6379
+    command: sh -c "npm install && npx nodemon --legacy-watch src/server.js"
+
+volumes:
+  pgadmin_data:
+  postgres_data:
+  redis_data:
+  node_modules:
+
+networks:
+  internal:
+    driver: bridge
