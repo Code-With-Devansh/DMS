@@ -57,7 +57,7 @@ services:
 
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://redis:6379
-    command: sh -c "npm install && npx nodemon --legacy-watch src/server.js"
+    command: sh -c "npm install && npx nodemon --legacy-watch src/app.js"
 
 volumes:
   pgadmin_data:
