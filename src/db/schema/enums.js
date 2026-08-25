@@ -50,6 +50,14 @@ export const ledgerStatus = pgEnum("ledger_status", [
   "PENDING_LEDGER",
   "ANCHORED",
   "FAILED",
+])
+export const caseStatus = pgEnum("case_status", [
+  "OPEN",
+  "UNDER_INVESTIGATION",
+  "CHARGESHEETED",
+  "IN_TRIAL",
+  "CLOSED",
+  "ARCHIVED",
 ]);
 
 // ==================================================================================================================

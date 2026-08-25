@@ -68,8 +68,3 @@ CREATE INDEX users_org_idx
 CREATE INDEX users_status_idx
     ON users (status);
 --> statement-breakpoint
-
-INSERT INTO users ( username, hashed_password, full_name, role, org, badge_id, email, clearance, jurisdiction, status, mfa_enrolled, mfa_temp_secret, mfa_secret ) VALUES ( 'testadmin', '$2b$10$iLAJ3uU.pwZXmpKAFf5sMefSocFnyl2mfQgmnr8LclOGqZLlV8iVa', 'Test Administrator', 'SECURITY_ADMIN', 'DMS', 'BADGE-TEST-001', 'testadmin@dms.local', 'SECRET', 'Haryana', 'ACTIVE', FALSE, NULL, NULL );
-
-INSERT INTO users ( username, hashed_password, full_name, role, org, badge_id, email, clearance, jurisdiction, status, mfa_enrolled, mfa_temp_secret, mfa_secret ) VALUES ( 'testadmin1', '$2b$10$iLAJ3uU.pwZXmpKAFf5sMefSocFnyl2mfQgmnr8LclOGqZLlV8iVa', 'Test Administrator', 'SECURITY_ADMIN', 'DMS', 'BADGE-TEST-002', 'testadmin1@dms.local', 'SECRET', 'Haryana', 'ACTIVE', FALSE, NULL, NULL );
-

@@ -99,6 +99,8 @@ POST /auth/step-up           Req: { code: string }     Res 200: { stepUpToken: s
 
 ## 2. Cases
 
+### Note : pagination is 1 based indexing.
+
 ```ts
 GET  /cases?status=&q=&assignedToMe=&page=&pageSize=   Res 200: Paginated<CaseSummary>
 POST /cases

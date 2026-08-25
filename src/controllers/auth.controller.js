@@ -8,6 +8,7 @@ import {
   AUTH_COOKIES,
   setMfaCookie,
   clearMfaCookie,
+  setRefreshCookie
 } from "../lib/cookies.js";
 
 // POST /login — verify credentials, then stash a short-lived MFA token in a
@@ -45,8 +46,8 @@ export async function verifyEnrollment(req, res) {
     await service.verifyEnrollment(mfaToken, code);
 
   clearMfaCookie(res);
-
-  return res.status(200).json({ backUpCodes: backupCodes, user, accessToken, refreshToken });
+  setRefreshCookie(res, refreshToken);
+  return res.status(200).json({ backUpCodes: backupCodes, user, accessToken });
 }
 
 // POST /mfa/verify — regular-login MFA step. Same cookie handoff as enrollment:
@@ -61,14 +62,17 @@ export async function verifyLogin(req, res) {
   );
 
   clearMfaCookie(res);
+  setRefreshCookie(res, refreshToken);
 
-  return res.status(200).json({ user, accessToken, refreshToken });
+  return res.status(200).json({ user, accessToken });
 }
 
 // POST /refresh — mint a new access token from the refresh cookie.
 export async function refresh(req, res) {
-  const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
+  const refreshToken = req.cookies[AUTH_COOKIES.refresh];
   const { accessToken } = await service.refresh(refreshToken);
+
+  setRefreshCookie(res, refreshToken);
 
   return res.status(200).json({ message: "Access token refreshed", accessToken });
 }

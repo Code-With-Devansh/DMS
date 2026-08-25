@@ -47,15 +47,8 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1787682631312,
-      "tag": "0006_furry_silk_fever",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1787683313686,
-      "tag": "0007_ledger_guard_message",
+      "when": 1787675062619,
+      "tag": "0006_case_schema",
       "breakpoints": true
     }
   ]
