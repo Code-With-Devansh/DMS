@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import config from "./index.js";
 
 if (!config.postgres.url) {
-  logger.fatal("[postgres] DATABASE_URL is not set");
+  console.error("[postgres] DATABASE_URL is not set");
   process.exit(1);
 }
 export const pool = new Pool({
@@ -13,5 +13,5 @@ export const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  logger.error({ err }, "[postgres] idle client error");
+  console.error({ err }, "[postgres] idle client error");
 });

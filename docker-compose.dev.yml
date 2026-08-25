@@ -31,6 +31,25 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: DMS-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console -> http://localhost:9001 (minioadmin/minioadmin)
+    networks:
+      - internal
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # Built-in single-key KMS so SSE-S3 works in dev without standing up KES.
+      # DEV-ONLY key — prod uses a real KMS/HSM; never reuse this value.
+      MINIO_KMS_SECRET_KEY: "dms-dev-key:LlrslPGKQIlzbsb/AR2WMlmKNvPY4Q+Q+5kWRHejXzU="
+    volumes:
+      - minio_data:/data
+
   api:
     build:
       context: .
@@ -45,6 +64,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      minio:
+        condition: service_started
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
@@ -57,6 +78,18 @@ services:
 
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://redis:6379
+
+      # Object storage (MinIO). The API reaches MinIO over the Docker network
+      # (minio:9000); presigned URLs must use a browser-reachable host, so the
+      # public endpoint points at localhost:9000.
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: dms-documents
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_SSE: AES256
     command: sh -c "npm install && npx nodemon --legacy-watch src/app.js"
   migrate:
     build:
@@ -81,6 +114,7 @@ volumes:
   postgres_data:
   redis_data:
   node_modules:
+  minio_data:
 
 networks:
   internal:
