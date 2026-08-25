@@ -23,6 +23,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",

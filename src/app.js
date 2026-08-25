@@ -42,7 +42,7 @@ async function start() {
   // Make sure the documents bucket exists before serving (retries a cold MinIO).
   await storage.ensureBucket();
   app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`);
+    console.log(`DMS app listening on port ${port}`);
   });
 }
 

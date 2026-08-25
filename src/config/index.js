@@ -1,3 +1,16 @@
+// Parse a human-friendly duration ("15m", "1h", "1d", "500ms") into milliseconds.
+// Falls back to `fallbackMs` when the value is missing or unparseable. Used to
+// keep cookie `maxAge` in lockstep with the JWT `expiresIn` strings below.
+function durationToMs(value, fallbackMs) {
+  if (value == null || value === "") return fallbackMs;
+  const match = String(value).trim().match(/^(\d+)\s*(ms|s|m|h|d)?$/i);
+  if (!match) return fallbackMs;
+  const amount = Number(match[1]);
+  const unit = (match[2] || "ms").toLowerCase();
+  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+  return amount * multipliers[unit];
+}
+
 export default {
   postgres: {
     url: process.env.DATABASE_URL,
@@ -40,5 +53,28 @@ export default {
     app: {
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),
+  },
+  jwt: {
+    // Three separate secrets so a leak of one token class can't forge another.
+    accessSecret: process.env.JWT_ACCESS_SECRET,
+    refreshSecret: process.env.JWT_REFRESH_SECRET,
+    // Short-lived token that carries the user between /login and MFA verification,
+    // replacing the old plaintext `username` cookie.
+    mfaSecret: process.env.JWT_MFA_SECRET,
+    // expiresIn strings handed straight to jsonwebtoken.
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES || "15m",
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES || "1d",
+    mfaExpiresIn: process.env.JWT_MFA_EXPIRES || "10m",
+    // Matching cookie lifetimes in ms, derived from the same env values.
+    accessMaxAgeMs: durationToMs(process.env.JWT_ACCESS_EXPIRES, 15 * 60 * 1000),
+    refreshMaxAgeMs: durationToMs(process.env.JWT_REFRESH_EXPIRES, 24 * 60 * 60 * 1000),
+    mfaMaxAgeMs: durationToMs(process.env.JWT_MFA_EXPIRES, 10 * 60 * 1000),
+  },
+  cookie: {
+    // In dev the API is served over plain HTTP on localhost, where `secure: true`
+    // cookies are silently dropped by browsers — so this defaults to false and
+    // should be flipped to true (via env) in any HTTPS deployment.
+    secure: (process.env.COOKIE_SECURE || "false") === "true",
+    sameSite: process.env.COOKIE_SAMESITE || "strict",
   },
 };

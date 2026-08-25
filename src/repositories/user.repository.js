@@ -62,13 +62,12 @@ class UserRepository {
             })
         );
 
-        console.log(hashedCodes);
-
         await db.
         update(users)
             .set({
                 backupCodes: hashedCodes,
-            });
+            })
+            .where(eq(users.id, userId));
 
         return hashedCodes;
     }
