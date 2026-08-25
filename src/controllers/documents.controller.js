@@ -1,5 +1,6 @@
 import { badRequest } from "../lib/errors.js";
 import { authorize } from "../lib/authorize.js";
+import { parse } from "../lib/validate.js";
 import {
   createDocumentMetadataSchema,
   newVersionMetadataSchema,
@@ -21,12 +22,6 @@ function readMetadata(req) {
   return req.body ?? {};
 }
 
-function parse(schema, data) {
-  const result = schema.safeParse(data);
-  if (!result.success) throw badRequest("validation failed", result.error.issues);
-  return result.data;
-}
-
 function requireFile(req) {
   if (!req.file) throw badRequest("a file is required (multipart field 'file')");
   return req.file;
@@ -40,6 +35,7 @@ export async function createDocument(req, res) {
   const doc = await service.createDocument({
     caseId,
     userId: req.user.id,
+    ip: req.ip,
     file,
     metadata,
   });
@@ -54,6 +50,7 @@ export async function addVersion(req, res) {
   const version = await service.addVersion({
     documentId: id,
     userId: req.user.id,
+    ip: req.ip,
     file,
     metadata,
   });
@@ -88,6 +85,8 @@ export async function download(req, res) {
   });
   const result = await service.getDownloadUrl(id, vid, {
     watermark: req.query.watermark === "true",
+    userId: req.user.id,
+    ip: req.ip,
   });
   res.json(result);
 }

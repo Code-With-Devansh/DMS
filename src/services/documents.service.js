@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { storage, versionStorageKey } from "../storage/index.js";
 import { conflict, notFound } from "../lib/errors.js";
 import * as repo from "../repositories/documents.repo.js";
+import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 
 // ── DTO mappers (shapes per DESIGN §13) ───────────────────────────────────────
 function toVersionDTO(v) {
@@ -64,7 +65,7 @@ const sha256Hex = (buf) => createHash("sha256").update(buf).digest("hex");
 // ── operations ────────────────────────────────────────────────────────────────
 
 // Upload a file as the first version of a new document.
-export async function createDocument({ caseId, userId, file, metadata }) {
+export async function createDocument({ caseId, userId, ip, file, metadata }) {
   const documentId = randomUUID();
   const versionId = randomUUID();
   const storageKey = versionStorageKey({ caseId, documentId, versionId });
@@ -91,7 +92,7 @@ export async function createDocument({ caseId, userId, file, metadata }) {
         tags: metadata.tags ?? [],
         createdBy: userId,
       });
-      await repo.insertVersion(tx, {
+      const version = await repo.insertVersion(tx, {
         id: versionId,
         documentId,
         fileName: file.originalname,
@@ -104,6 +105,23 @@ export async function createDocument({ caseId, userId, file, metadata }) {
         // BullMQ pipeline (DESIGN §11) will reintroduce SCANNING->READY later.
         processingStatus: "READY",
       });
+      // Same transaction: no document exists without its "created" audit entry.
+      await recordAudit(tx, {
+        actorId: userId,
+        action: AuditAction.DOCUMENT_CREATED,
+        targetType: TargetType.DOCUMENT,
+        targetId: documentId,
+        ip,
+        details: {
+          caseId,
+          title: metadata.title,
+          docType: metadata.docType,
+          classification: metadata.classification,
+          versionNo: version.versionNo,
+          fileName: version.fileName,
+          sha256,
+        },
+      });
     });
   } catch (err) {
     await storage.deleteObject(storageKey).catch(() => {});
@@ -114,7 +132,7 @@ export async function createDocument({ caseId, userId, file, metadata }) {
 }
 
 // Upload a new immutable version of an existing document.
-export async function addVersion({ documentId, userId, file, metadata }) {
+export async function addVersion({ documentId, userId, ip, file, metadata }) {
   const doc = await repo.getDocumentById(documentId);
   if (!doc) throw notFound("document not found");
   if (doc.sealed) throw conflict("document is sealed; no new versions allowed");
@@ -136,8 +154,8 @@ export async function addVersion({ documentId, userId, file, metadata }) {
 
   let version;
   try {
-    version = await db.transaction((tx) =>
-      repo.insertVersion(tx, {
+    version = await db.transaction(async (tx) => {
+      const inserted = await repo.insertVersion(tx, {
         id: versionId,
         documentId,
         fileName: file.originalname,
@@ -148,8 +166,23 @@ export async function addVersion({ documentId, userId, file, metadata }) {
         note: metadata.note,
         createdBy: userId,
         processingStatus: "READY",
-      }),
-    );
+      });
+      await recordAudit(tx, {
+        actorId: userId,
+        action: AuditAction.VERSION_ADDED,
+        targetType: TargetType.VERSION,
+        targetId: versionId,
+        ip,
+        details: {
+          documentId,
+          versionNo: inserted.versionNo,
+          fileName: inserted.fileName,
+          sha256,
+          note: metadata.note ?? null,
+        },
+      });
+      return inserted;
+    });
   } catch (err) {
     await storage.deleteObject(storageKey).catch(() => {});
     throw err;
@@ -187,14 +220,34 @@ export async function listVersions(documentId) {
 
 // Presigned, time-limited download URL for one version — the { url, expiresAt }
 // of DESIGN §13.4.
-export async function getDownloadUrl(documentId, versionId, { watermark } = {}) {
+export async function getDownloadUrl(documentId, versionId, { watermark, userId, ip } = {}) {
   const doc = await repo.getDocumentById(documentId);
   if (!doc) throw notFound("document not found");
   const version = await repo.getVersion(documentId, versionId);
   if (!version) throw notFound("version not found");
+
+  // Access event: record who was granted the ability to fetch the bytes. The
+  // object fetch itself happens directly against storage via the presigned URL,
+  // so this logs issuance, not the byte transfer. Fail-closed — no URL is
+  // returned unless the audit entry commits.
+  await db.transaction((tx) =>
+    recordAudit(tx, {
+      actorId: userId,
+      action: AuditAction.VERSION_DOWNLOADED,
+      targetType: TargetType.VERSION,
+      targetId: versionId,
+      ip,
+      details: {
+        documentId,
+        versionNo: version.versionNo,
+        fileName: version.fileName,
+        watermark: !!watermark,
+      },
+    }),
+  );
+
   // TODO(watermark): DESIGN §12 wants a viewer-name/timestamp watermark on
   // download. Accepted but not yet applied; returns the raw presigned URL.
-  void watermark;
   return storage.getSignedDownloadUrl(version.storageKey, {
     fileName: version.fileName,
     contentType: version.mimeType,

@@ -1,6 +1,7 @@
 import express from 'express';
 import authRouter from "./routes/auth.route.js"
 import documentsRouter from "./routes/documents.route.js";
+import auditRouter from "./routes/audit.route.js";
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
 
@@ -18,6 +19,7 @@ app.get('/', (req, res) => {
 app.use("/api/auth", authRouter)
 
 app.use("/api/v1", documentsRouter);
+app.use("/api/v1", auditRouter);
 
 // Liveness + storage reachability (handy for a compose healthcheck).
 app.get("/health/storage", async (req, res) => {

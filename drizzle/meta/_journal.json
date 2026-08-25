@@ -22,6 +22,20 @@
       "when": 1787595358785,
       "tag": "0002_external_fks",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787652273655,
+      "tag": "0003_tired_quasar",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787652284925,
+      "tag": "0004_audit_chain",
+      "breakpoints": true
     }
   ]
 }
