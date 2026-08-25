@@ -5,6 +5,13 @@ import { pgEnum } from "drizzle-orm/pg-core";
 // IMPORT these, not redefine them (a second pgEnum would emit a duplicate
 // CREATE TYPE and break generation).
 
+export const classification = pgEnum("classification", [
+  "PUBLIC",
+  "RESTRICTED",
+  "CONFIDENTIAL",
+  "SECRET",
+]);
+
 
 export const docType = pgEnum("doc_type", [
   "FIR",
