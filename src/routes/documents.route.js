@@ -16,6 +16,8 @@ router.get("/cases/:caseId/documents", ctrl.listDocuments);
 router.post("/documents/:id/versions", upload.single("file"), ctrl.addVersion);
 router.get("/documents/:id", ctrl.getDocument);
 router.get("/documents/:id/versions", ctrl.listVersions);
+router.get("/documents/:id/versions/:vid", ctrl.getVersion);
 router.get("/documents/:id/versions/:vid/download", ctrl.download);
+router.post("/documents/:id/versions/:vid/restore", ctrl.restoreVersion);
 
 export default router;

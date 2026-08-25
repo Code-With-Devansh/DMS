@@ -90,3 +90,29 @@ export async function download(req, res) {
   });
   res.json(result);
 }
+
+export async function getVersion(req, res) {
+  const { id, vid } = req.params;
+  await authorize({
+    user: req.user,
+    action: "document:read",
+    resource: { documentId: id, versionId: vid },
+  });
+  res.json(await service.getVersion(id, vid));
+}
+
+export async function restoreVersion(req, res) {
+  const { id, vid } = req.params;
+  await authorize({
+    user: req.user,
+    action: "document:restore",
+    resource: { documentId: id, versionId: vid },
+  });
+  const doc = await service.restoreVersion({
+    documentId: id,
+    sourceVersionId: vid,
+    userId: req.user.id,
+    ip: req.ip,
+  });
+  res.json(doc);
+}

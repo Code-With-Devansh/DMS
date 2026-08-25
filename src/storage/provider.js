@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -146,6 +147,42 @@ export function createS3StorageProvider({
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
   }
 
+  // Duplicate an existing object to a new key. Used by version restore: a restored
+  // version is a brand-new immutable version that owns its own bytes, so we copy
+  // the source object rather than share a storage key. Under server-side
+  // encryption (PRESIGNED mode) this is a server-side copy — bytes never transit
+  // the app — re-encrypted at rest exactly like a fresh upload. Under envelope
+  // encryption (PROXY mode) the stored bytes are ciphertext under a per-object
+  // key, so we must re-key by streaming decrypt-on-read -> encrypt-on-write.
+  // Throws ObjectNotFoundError if the source is missing.
+  async function copyObject({ sourceKey, destKey, contentType, metadata }) {
+    if (encryption.downloadMode === DownloadMode.PRESIGNED) {
+      try {
+        await client.send(
+          new CopyObjectCommand({
+            Bucket: bucket,
+            Key: destKey,
+            // Keys are UUID path segments (hex + '/'), so no escaping is needed.
+            CopySource: `${bucket}/${sourceKey}`,
+            MetadataDirective: "COPY", // carry content-type + user metadata (sha256)
+            ...encryption.putParams(),
+          }),
+        );
+      } catch (err) {
+        if (isNotFound(err)) throw new ObjectNotFoundError(sourceKey);
+        throw err;
+      }
+      return { key: destKey };
+    }
+    const src = await getObject(sourceKey);
+    return putObject({
+      key: destKey,
+      body: src.body,
+      contentType: contentType ?? src.contentType,
+      metadata,
+    });
+  }
+
   // Presigned, time-limited download URL — the { url, expiresAt } of API §13.4.
   // Valid only when the encryption mode yields usable bytes to a direct fetch
   // (server-side encryption). Under envelope encryption the download must proxy
@@ -184,6 +221,7 @@ export function createS3StorageProvider({
     statObject,
     objectExists,
     deleteObject,
+    copyObject,
     getSignedDownloadUrl,
   };
 }
