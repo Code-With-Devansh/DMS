@@ -11,6 +11,30 @@ function durationToMs(value, fallbackMs) {
   return amount * multipliers[unit];
 }
 
+// Derive BullMQ/ioredis connection settings. Prefer REDIS_URL (what
+// docker-compose sets); fall back to the discrete REDIS_HOST/PORT/PASSWORD vars,
+// then to the compose service defaults. Returned as a { host, port, password }
+// object because BullMQ builds and owns its own redis client from these.
+function redisConnection() {
+  let host = process.env.REDIS_HOST || "redis";
+  let port = Number(process.env.REDIS_PORT) || 6379;
+  let password = process.env.REDIS_PASSWORD || undefined;
+  const url = process.env.REDIS_URL;
+  if (url) {
+    try {
+      const u = new URL(url);
+      if (u.hostname) host = u.hostname;
+      if (u.port) port = Number(u.port);
+      // A password-only URL (redis://:pw@host) leaves username empty; decode any
+      // percent-escapes so special characters survive.
+      if (u.password) password = decodeURIComponent(u.password);
+    } catch {
+      // Malformed REDIS_URL: ignore it and use the discrete vars above.
+    }
+  }
+  return { host, port, password };
+}
+
 export default {
   postgres: {
     url: process.env.DATABASE_URL,
@@ -76,5 +100,26 @@ export default {
     // should be flipped to true (via env) in any HTTPS deployment.
     secure: (process.env.COOKIE_SECURE || "false") === "true",
     sameSite: process.env.COOKIE_SAMESITE || "strict",
+  },
+  redis: {
+    // Kept for reference/logging; the object below is what BullMQ consumes.
+    url: process.env.REDIS_URL,
+    connection: redisConnection(),
+  },
+  ledger: {
+    // Master switch. When false, uploads skip enqueue entirely (rows stay
+    // PENDING_LEDGER) — for environments with no worker/Redis.
+    enabled: (process.env.LEDGER_ENABLED || "true") !== "false",
+    // Which LedgerService implementation to construct: "memory" (in-process stub)
+    // or "fabric" (real chaincode client — not yet built).
+    driver: process.env.LEDGER_DRIVER || "memory",
+    queueName: process.env.LEDGER_QUEUE_NAME || "ledger-anchor",
+    // Anchor-job retry policy (BullMQ exponential backoff).
+    attempts: Number(process.env.LEDGER_ANCHOR_ATTEMPTS) || 5,
+    backoffMs: Number(process.env.LEDGER_ANCHOR_BACKOFF_MS) || 5000,
+    concurrency: Number(process.env.LEDGER_WORKER_CONCURRENCY) || 4,
+    // InMemoryLedgerService knob: "fail" makes every write throw, to exercise the
+    // retry -> FAILED path. Any other value = normal operation.
+    stubMode: process.env.LEDGER_STUB_MODE || "ok",
   },
 };

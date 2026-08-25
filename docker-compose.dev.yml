@@ -91,6 +91,32 @@ services:
       STORAGE_FORCE_PATH_STYLE: "true"
       STORAGE_SSE: AES256
     command: sh -c "npm install && npx nodemon --legacy-watch src/app.js"
+  worker:
+    build:
+      context: .
+      dockerfile: dockerfile.dev
+    container_name: DMS-worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/usr/src/app
+      - node_modules:/usr/src/app/node_modules
+    networks:
+      - internal
+    # No ports: the worker is a background consumer, not an HTTP service. It
+    # reaches Postgres + Redis over the internal network. It does NOT touch object
+    # storage (its import graph excludes src/storage), so no MinIO env is needed.
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
+      REDIS_URL: redis://redis:6379
+      LEDGER_DRIVER: memory
+    command: sh -c "npm install && npx nodemon --legacy-watch src/worker.js"
   migrate:
     build:
       context: .
