@@ -43,6 +43,13 @@
       "when": 1787652294790,
       "tag": "0005_users_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787675062619,
+      "tag": "0006_case_schema",
+      "breakpoints": true
     }
   ]
 }

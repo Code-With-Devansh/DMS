@@ -4,17 +4,14 @@
 import config from "../config/index.js";
 
 export const AUTH_COOKIES = {
-  access: "access_token",
   refresh: "refresh_token",
   mfa: "mfa_token",
 };
 
-// The access token is needed by every protected route, so it lives at "/".
-const ACCESS_PATH = "/";
 // The refresh and mfa tokens are only ever consumed by the auth router, so we
 // scope them to it — the browser won't attach them to document/audit requests.
-const REFRESH_PATH = "/api/auth";
-const MFA_PATH = "/api/auth";
+const REFRESH_PATH = "/api/v1/auth";
+const MFA_PATH = "/api/v1/auth";
 
 // httpOnly keeps tokens out of reach of client-side JS (XSS mitigation);
 // secure/sameSite come from config so they can be tightened in production.
@@ -28,7 +25,6 @@ function baseOptions() {
 
 
 export function clearAuthCookies(res) {
-  res.clearCookie(AUTH_COOKIES.access, { ...baseOptions(), path: ACCESS_PATH });
   res.clearCookie(AUTH_COOKIES.refresh, { ...baseOptions(), path: REFRESH_PATH });
 }
 
@@ -37,6 +33,14 @@ export function setMfaCookie(res, token) {
     ...baseOptions(),
     path: MFA_PATH,
     maxAge: config.jwt.mfaMaxAgeMs,
+  });
+}
+
+export function setRefreshCookie(res, token) {
+  res.cookie(AUTH_COOKIES.refresh, token, {
+    ...baseOptions(),
+    path: REFRESH_PATH,
+    maxAge: config.jwt.refreshMaxAgeMs,
   });
 }
 

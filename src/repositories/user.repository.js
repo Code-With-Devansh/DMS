@@ -62,10 +62,12 @@ class UserRepository {
             })
         );
 
+        const stringifiedCodes = JSON.stringify(hashedCodes);
+
         await db.
         update(users)
             .set({
-                backupCodes: hashedCodes,
+                backupCodes: stringifiedCodes,
             })
             .where(eq(users.id, userId));
 

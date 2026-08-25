@@ -43,6 +43,15 @@ export const processingStatus = pgEnum("processing_status", [
   "FAILED",
 ]);
 
+export const caseStatus = pgEnum("case_status", [
+  "OPEN",
+  "UNDER_INVESTIGATION",
+  "CHARGESHEETED",
+  "IN_TRIAL",
+  "CLOSED",
+  "ARCHIVED",
+]);
+
 // ==================================================================================================================
 // enums for users table starts here
 // ==================================================================================================================

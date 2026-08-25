@@ -5,10 +5,13 @@ import { verifyAccessToken } from "../lib/tokens.js";
 import { unauthenticated } from "../lib/errors.js";
 
 export function requireAuth(req, res, next) {
+  // required auth missing header crash
+  if( !req.headers.authorization ) {
+    return next(unauthenticated("Authentication Required"));
+  }
+
   const authorizationHeader = req.headers.authorization;
-  const token = authorizationHeader.split(" ")[1];
-  console.log(token);
-  console.log(authorizationHeader);
+  const token = authorizationHeader.split(" ").at(1);
   if (!token) return next(unauthenticated("Authentication required"));
 
   try {
