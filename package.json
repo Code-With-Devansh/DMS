@@ -21,9 +21,11 @@
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "multer": "^2.2.0",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
-    "speakeasy": "^2.0.0"
+    "speakeasy": "^2.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10"

@@ -1,6 +1,8 @@
 import express from 'express';
 import authRouter from "./routes/auth.route.js"
+import documentsRouter from "./routes/documents.route.js";
 import { storage } from "./storage/index.js";
+import { errorHandler } from "./middlewares/error.js";
 
 const app = express();
 const port = 3000;
@@ -15,6 +17,8 @@ app.get('/', (req, res) => {
 
 app.use("/api/auth", authRouter)
 
+app.use("/api/v1", documentsRouter);
+
 // Liveness + storage reachability (handy for a compose healthcheck).
 app.get("/health/storage", async (req, res) => {
   try {
@@ -24,6 +28,10 @@ app.get("/health/storage", async (req, res) => {
     res.status(503).json({ storage: "unavailable", error: err.message });
   }
 });
+
+// Error handler must be registered last so it catches errors from every route
+// above (Express 5 forwards rejected async handlers here automatically).
+app.use(errorHandler);
 
 async function start() {
   // Make sure the documents bucket exists before serving (retries a cold MinIO).

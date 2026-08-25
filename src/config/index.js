@@ -29,6 +29,14 @@ export default {
     // Default lifetime of presigned download URLs, in seconds.
     signedUrlTtlSeconds: Number(process.env.STORAGE_SIGNED_URL_TTL) || 300,
   },
+  upload: {
+    // Max multipart upload size. Parsed in memory for now (middlewares/upload.js).
+    maxFileBytes: Number(process.env.UPLOAD_MAX_BYTES) || 52_428_800, // 50 MiB
+  },
+  dev: {
+    // Fallback identity used by middlewares/currentUser.js until real auth lands.
+    userId: process.env.DEV_USER_ID || "00000000-0000-0000-0000-000000000001",
+  },
     app: {
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),
