@@ -13,7 +13,8 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { classification, docType, integrityStatus, processingStatus } from "./enums.js";
+import {  docType, integrityStatus, processingStatus } from "./enums.js";
+import { classification } from "./enums/classification.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // documents: one row per logical document (an FIR, a chargesheet, ...).

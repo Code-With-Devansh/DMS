@@ -3,3 +3,5 @@ node_modules
 postman
 .postman
 .claude
+
+.idea/*
