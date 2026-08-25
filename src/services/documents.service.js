@@ -253,3 +253,80 @@ export async function getDownloadUrl(documentId, versionId, { watermark, userId,
     contentType: version.mimeType,
   });
 }
+
+// A single version's metadata (§4: GET /documents/:id/versions/:vid).
+export async function getVersion(documentId, versionId) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  const version = await repo.getVersion(documentId, versionId);
+  if (!version) throw notFound("version not found");
+  return toVersionDTO(version);
+}
+
+// Restore an older version by creating a NEW version whose bytes are copied from
+// the source (§4: POST /documents/:id/versions/:vid/restore). The version_no
+// trigger bumps the number and the current-pointer trigger moves
+// current_version_id to the new row, so the restored content becomes current.
+// Returns the updated Document.
+export async function restoreVersion({ documentId, sourceVersionId, userId, ip }) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  if (doc.sealed) throw conflict("document is sealed; no new versions allowed");
+  const source = await repo.getVersion(documentId, sourceVersionId);
+  if (!source) throw notFound("version not found");
+
+  const newVersionId = randomUUID();
+  const storageKey = versionStorageKey({
+    caseId: doc.caseId,
+    documentId,
+    versionId: newVersionId,
+  });
+
+  // Content is byte-identical to the source, so we reuse its sha256 rather than
+  // re-hashing. Copy the object FIRST, then commit metadata — same
+  // store-then-commit / compensating-delete discipline as create & addVersion.
+  await storage.copyObject({
+    sourceKey: source.storageKey,
+    destKey: storageKey,
+    contentType: source.mimeType,
+    metadata: { sha256: source.sha256 },
+  });
+
+  try {
+    await db.transaction(async (tx) => {
+      const inserted = await repo.insertVersion(tx, {
+        id: newVersionId,
+        documentId,
+        fileName: source.fileName,
+        storageKey,
+        mimeType: source.mimeType,
+        sizeBytes: source.sizeBytes,
+        sha256: source.sha256,
+        note: `Restored from version ${source.versionNo}`,
+        restoredFromVersionId: source.id,
+        createdBy: userId,
+        processingStatus: "READY",
+      });
+      await recordAudit(tx, {
+        actorId: userId,
+        action: AuditAction.VERSION_RESTORED,
+        targetType: TargetType.VERSION,
+        targetId: newVersionId,
+        ip,
+        details: {
+          documentId,
+          versionNo: inserted.versionNo,
+          restoredFromVersionId: source.id,
+          restoredFromVersionNo: source.versionNo,
+          sha256: source.sha256,
+          fileName: source.fileName,
+        },
+      });
+    });
+  } catch (err) {
+    await storage.deleteObject(storageKey).catch(() => {});
+    throw err;
+  }
+
+  return getDocument(documentId);
+}
