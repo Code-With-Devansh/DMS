@@ -9,5 +9,7 @@ export function generateBackupCodes(count = 10) {
         codes.push(code);
     }
 
+    console.log(codes);
+
     return codes;
 }

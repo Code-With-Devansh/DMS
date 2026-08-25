@@ -47,6 +47,7 @@ CREATE TABLE users (
                        mfa_enrolled BOOLEAN NOT NULL DEFAULT FALSE,
                        mfa_temp_secret TEXT,
                        mfa_secret TEXT,
+                       backup_codes TEXT,
 
                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                        last_login_at TIMESTAMPTZ

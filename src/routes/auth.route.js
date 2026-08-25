@@ -1,33 +1,37 @@
 import express from "express";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
-import { validate } from '../middleware/validate.js';
-import {
-    findUserById,
-    findUserByUsername, updateLastLoginAt,
-    updateUserMfaTempSecret,
-    updateUserSecret
-} from "../repository/user.repository.js";
+import { parse } from '../lib/validate.js';
+import userRepository from "../repositories/user.repository.js";
 import { loginSchema, mfaCodeSchema } from "../validation/schema/auth.schema.js";
 import { toMe } from "../mapper/user.mapper.js";
-import { apiError  } from "../dto/error.js";
 import bcrypt from "bcrypt";
+import {
+    invalidCredentials,
+    forbidden,
+    notFound,
+    badRequest,
+    unauthenticated
+} from "../lib/errors.js";
+
+import { generateBackupCodes } from "../utils/generateBackupCodes.js"
 
 const router = express.Router();
 
 
-router.post("/login", validate(loginSchema), async (req, res) => {
+router.post("/login", async (req, res) => {
 
-    const { username, password } = req.body;
+    let loginData = await parse(loginSchema, req.body);
 
-    const user = await findUserByUsername(username);
+    const { username, password } = loginData;
+    const user = await userRepository.findUserByUsername(username);
     console.log(user);
     if (!user || !bcrypt.compare(password, user.hashedPassword)) {
-        return apiError(res, 401,"Invalid username or password");
+        return invalidCredentials()
     }
 
     if (user.status !== "ACTIVE") {
-        return apiError(res, 403, "User account is not active");
+        return forbidden("Forbidden");
     }
 
     res.cookie(
@@ -46,7 +50,6 @@ router.post("/login", validate(loginSchema), async (req, res) => {
             message: "First login detected. Complete MFA enrollment.",
         });
     }
-
     return res.status(200).json({ mfaRequired: true });
 });
 
@@ -54,12 +57,12 @@ router.post("/login", validate(loginSchema), async (req, res) => {
 router.post("/mfa/enroll/start", async (req, res) => {
     const username = req.cookies.username;
     if(!username){
-        return apiError(res, 401, "Username is required");
+        return notFound("Username is required");
     }
 
-    const user = await findUserByUsername(username);
+    const user = await userRepository.findUserByUsername(username);
     if (!user) {
-        return apiError(res, 404,  "User not found");
+        return notFound("User not found");
     }
 
     const secret = speakeasy.generateSecret({
@@ -67,7 +70,7 @@ router.post("/mfa/enroll/start", async (req, res) => {
         issuer: "DMS",
     });
 
-    await updateUserMfaTempSecret(user.id, secret.base32);
+    await userRepository.updateUserMfaTempSecret(user.id, secret.base32);
 
 
     const qrDataUrl = await qrcode.toDataURL(secret.otpauth_url);
@@ -80,15 +83,16 @@ router.post("/mfa/enroll/start", async (req, res) => {
 
 
 // Route to verify the first token and finalize setup
-router.post('/mfa/enroll/verify', validate(mfaCodeSchema), async (req, res) => {
-    const { code } = req.body;
+router.post('/mfa/enroll/verify', async (req, res) => {
+    const safeMFACode = await parse(mfaCodeSchema, req.body);
+    const { code } = safeMFACode;
     const username = req.cookies.username;
     if (!username) {
-        return apiError(res, 401, "Username is required");
+        return notFound(`Username not found.`);
     }
-    const user = await findUserByUsername(username);
+    const user = await userRepository.findUserByUsername(username);
     if (!user || !user.mfaTempSecret) {
-        return apiError(res, 400, "VALIDATION", "No pending MFA enrollment found");
+        return badRequest("No pending MFA enrollment found");
     }
 
     console.log(user.mfaTempSecret);
@@ -103,28 +107,26 @@ router.post('/mfa/enroll/verify', validate(mfaCodeSchema), async (req, res) => {
     console.log(verified);
 
   if (verified) {
-      await updateUserSecret(user.id, user.mfaTempSecret);
+      await userRepository.updateUserSecret(user.id, user.mfaTempSecret);
       res.clearCookie("username");
-        let backUpCodes = [
-            "12345678`," +
-            "12345698",
-        ];
+        let backUpCodes = generateBackupCodes(8)
+      await userRepository.saveBackupCodes(user.id, backUpCodes);
         return res.status(200).json({
             backUpCodes: backUpCodes,
         });
   }
-    return apiError(res, 400, "VALIDATION", "Invalid MFA code");
+    return badRequest("Invalid MFA code");
 });
 
-router.post('/mfa/verify',validate(mfaCodeSchema),  async (req, res) => {
+router.post('/mfa/verify',  async (req, res) => {
     const { code } = req.body;
     const username = req.cookies.username;
     if (!username) {
-        return apiError(res, 401, "Username is required");
+        return invalidCredentials("Username is required");
     }
-    const user = await findUserByUsername(username);
+    const user = await userRepository.findUserByUsername(username);
     if (!user || !user.mfaSecret || !user.mfaEnrolled) {
-        return apiError(res, 400,  "User is not enrolled in MFA");
+        return badRequest("User is not enrolled in MFA");
     }
 
     const verified = speakeasy.totp.verify({
@@ -135,13 +137,13 @@ router.post('/mfa/verify',validate(mfaCodeSchema),  async (req, res) => {
     });
 
     if (!verified) {
-        return apiError(res, 401, "UNAUTHENTICATED", "Invalid MFA code");
+        return unauthenticated("Invalid MFA code");
     }
 
-    await updateLastLoginAt(user.id);
+    await userRepository.updateLastLoginAt(user.id);
     res.clearCookie("username");
 
-    const freshUser = await findUserById(user.id);
+    const freshUser = await userRepository.findUserById(user.id);
     return res.status(200).json({ user: toMe(freshUser) });
 });
 
@@ -153,7 +155,7 @@ router.post("/logout", (req, res) => {
 });
 
 router.get("/me", async (req, res) => {
-    const user = await findUserByUsername(req.cookies.username);
+    const user = await userRepository.findUserByUsername(req.cookies.username);
     return res.send({
         "message" : toMe(user),
         "status" : 200

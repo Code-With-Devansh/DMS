@@ -43,4 +43,30 @@ export const processingStatus = pgEnum("processing_status", [
   "FAILED",
 ]);
 
+// ==================================================================================================================
+// enums for users table starts here
+// ==================================================================================================================
+
+export const status = pgEnum("status", [
+    "ACTIVE",
+    "DISABLED",
+])
+export const role = pgEnum("role", [
+  "INVESTIGATING_OFFICER",
+  "SUPERVISOR",
+  "PROSECUTOR",
+  "JUDGE",
+  "COURT_CLERK",
+  "FORENSIC_ANALYST",
+  "RECORDS_ADMIN",
+  "SECURITY_ADMIN",
+  "ORG_ADMIN",
+  "SYSTEM_ADMIN",
+  "AUDITOR"
+])
+
+// ==================================================================================================================
+// enums for users ends hers
+// ==================================================================================================================
+
 

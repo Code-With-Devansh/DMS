@@ -19,3 +19,9 @@ export const notFound = (message = "resource not found") =>
   new ApiError(404, "NOT_FOUND", message);
 export const conflict = (message, code = "CONFLICT") =>
   new ApiError(409, code, message);
+
+export const invalidCredentials = (message = "Invalid username or password", code= "VALIDATION") =>
+    new ApiError(401, code, message);
+
+export const unauthenticated = (message = "unauthenticated") =>
+    new ApiError(401, "UNAUTHORIZED", message);

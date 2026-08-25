@@ -8,9 +8,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { role } from "./enums/role.js";
-import { classification }     from "./enums/classification.js";
-import { status }     from "./enums/status.js";
+
+import { classification, role, status } from "./enums.js"
 
 export const users = pgTable(
   "users",
@@ -30,7 +29,7 @@ export const users = pgTable(
     mfaEnrolled: boolean("mfa_enrolled").notNull().default(false),
       mfaTempSecret : text("mfa_temp_secret"),
       mfaSecret: text("mfa_secret"),
-
+      backupCodes : text("backup_codes"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
