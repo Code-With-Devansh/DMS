@@ -1,9 +1,11 @@
--- Refresh the immutability guard's advisory message only. The frozen-column
--- deny-list (the IF-chain) is UNCHANGED and byte-for-byte identical to
--- 0001_version_control.sql; the async pipeline columns stay mutable by omission.
--- Since 0006 the pipeline also owns ledger_status + anchored_at, so the old
--- RAISE text under-listed what may change. This corrects the self-documenting
--- security policy without altering any enforcement logic.
+CREATE TYPE "public"."ledger_status" AS ENUM('PENDING_LEDGER', 'ANCHORED', 'FAILED');--> statement-breakpoint
+ALTER TABLE "document_versions" ADD COLUMN "ledger_status" "ledger_status" DEFAULT 'PENDING_LEDGER' NOT NULL;--> statement-breakpoint
+ALTER TABLE "document_versions" ADD COLUMN "anchored_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "document_versions_ledger_pending_idx" ON "document_versions" USING btree ("ledger_status") WHERE "document_versions"."ledger_status" <> 'ANCHORED';--> statement-breakpoint
+-- Refresh the immutability guard's advisory message to name the ledger pipeline
+-- columns. The frozen-column deny-list (the IF-chain) is UNCHANGED and
+-- byte-for-byte identical to 0001_version_control.sql; ledger_status/anchored_at
+-- stay mutable by omission. This only corrects the self-documenting RAISE text.
 CREATE OR REPLACE FUNCTION document_versions_guard_update() RETURNS trigger AS $$
 BEGIN
   IF NEW.id                       IS DISTINCT FROM OLD.id

@@ -50,6 +50,13 @@
       "when": 1787675062619,
       "tag": "0006_case_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787675062620,
+      "tag": "0007_ledger_columns",
+      "breakpoints": true
     }
   ]
 }
