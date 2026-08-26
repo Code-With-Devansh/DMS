@@ -12,7 +12,7 @@ router.get("/cases/:id", ctrl.getCase);
 router.patch("/cases/:id", ctrl.updateCase);
 router.post("/cases/:id/officers", ctrl.addOfficer);
 router.delete("/cases/:id/officers/:userId", ctrl.removeOfficerFromCase);
-router.post("/cases/:id/legal-hold", ctrl.setHoldReason);
-router.delete("/cases/:id/legal-hold", ctrl.releaseHold);
+router.delete("/cases/:id/legal-hold", ctrl.setHoldReason);
+router.post("/cases/:id/legal-hold", ctrl.releaseHold);
 
 export default router;

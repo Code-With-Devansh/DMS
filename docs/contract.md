@@ -1,7 +1,7 @@
 
 ## Conventions (read first)
 
-- **Base path:** `/api/`
+- **Base path:** `/api/v1/`
 - **Auth:** session in an **httpOnly cookie** — the frontend sends access token in body, `401` = not logged in, `403` = logged in but not allowed.
 - **Content-Type:** `application/json`, except file uploads (`multipart/form-data`).
 - **Sensitive actions** (seal, delete, export, sign, permission change) require a **step-up** header: `X-Step-Up-Token: <token>` — else `403 { code: "STEP_UP_REQUIRED" }`.
@@ -111,8 +111,8 @@ GET   /cases/:id                                        Res 200: Case
 PATCH /cases/:id   Req: Partial<{ title; status; classification; description }>   Res 200: Case
 POST  /cases/:id/officers     Req: { userId: ID; roleOnCase: string }   Res 200: Case
 DELETE /cases/:id/officers/:userId                      Res 200: Case
-POST  /cases/:id/legal-hold   Req: { reason: string }   Res 200: Case     // step-up
-DELETE /cases/:id/legal-hold                            Res 200: Case     // step-up
+DELETE  /cases/:id/legal-hold   Req: { reason: string }   Res 200: Case     // step-up
+POST /cases/:id/legal-hold                            Res 200: Case     // step-up
 ```
 
 ## 3. Documents

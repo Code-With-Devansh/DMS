@@ -89,6 +89,7 @@ export default {
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES || "15m",
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES || "1d",
     mfaExpiresIn: process.env.JWT_MFA_EXPIRES || "10m",
+    stepUpExpiresIn: process.env.JWT_STEP_UP_EXPIRES || "5m",
     // Matching cookie lifetimes in ms, derived from the same env values.
     accessMaxAgeMs: durationToMs(process.env.JWT_ACCESS_EXPIRES, 15 * 60 * 1000),
     refreshMaxAgeMs: durationToMs(process.env.JWT_REFRESH_EXPIRES, 24 * 60 * 60 * 1000),

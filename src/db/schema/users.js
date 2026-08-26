@@ -11,34 +11,53 @@ import {
 
 import { classification, role, status } from "./enums.js"
 
+
+// users table schema definition for Drizzle ORM as given in docs/contract.md
 export const users = pgTable(
   "users",
   {
+    // user summary information
     id: uuid("id").primaryKey().defaultRandom(),
-    username: text("username").notNull(),
-      hashedPassword : text("hashed_password").notNull(),
     fullName: text("full_name").notNull(),
     role: role("role").notNull(),
     org: text("org").notNull(),
     badgeId: text("badge_id"),
-
-    email: text("email").notNull(),
+    
+    
+    email: text("email").notNull().unique(),
     clearance: classification("clearance").notNull(),
     jurisdiction: text("jurisdiction").notNull(),
     status: status("status").notNull(),
     mfaEnrolled: boolean("mfa_enrolled").notNull().default(false),
-      mfaTempSecret : text("mfa_temp_secret"),
-      mfaSecret: text("mfa_secret"),
-      backupCodes : text("backup_codes"),
+    
+    // mfa secrets and backup codes so that we can verify the user during login
+    mfaTempSecret: text("mfa_temp_secret"),
+    mfaSecret: text("mfa_secret"),
 
+    // backup codes are stored as a JSON array of objects with the following structure:
+    // {
+    //   codeHash: string, // hashed backup code
+    //   used: boolean, // whether the code has been used
+    // }
+
+    backupCodes: text("backup_codes"),
+
+    // timestamps for auditing and security purposes
+    passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    
+    // username and hashed password for authentication
+    username: text("username").notNull().unique(), // created to uniquely identify users, not necessarily their email address
+    hashedPassword: text("hashed_password").notNull(),
   },
   (t) => [
-    uniqueIndex("users_username_key").on(t.username),
-    uniqueIndex("users_email_key").on(t.email),
-    index("users_role_idx").on(t.role),
-    index("users_org_idx").on(t.org),
-    index("users_status_idx").on(t.status),
+
+    // creating indexes for faster queries on frequently accessed columns
+    // as per the requirements of the application in user repository and user service
+    index("username_idx").on(t.username),
+    index("org_idx").on(t.org),
+    index("role_idx").on(t.role),
+    index("status_idx").on(t.status),
   ],
 );

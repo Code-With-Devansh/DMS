@@ -1,32 +1,54 @@
-// Thin HTTP layer for auth. Controllers validate input, translate the service's
-// result into responses, and own all cookie reads/writes — the service returns
-// plain data and token strings and never touches req/res.
 import { parse } from "../lib/validate.js";
-import { loginSchema, mfaCodeSchema } from "../validation/schema/auth.schema.js";
+import { loginSchema, mfaCodeSchema, passwordSchema } from "../validation/auth.schema.js";
 import * as service from "../services/user.service.js";
 import {
   AUTH_COOKIES,
   setMfaCookie,
   clearMfaCookie,
-  setRefreshCookie
+  setRefreshCookie,
+  clearAuthCookies,
 } from "../lib/cookies.js";
 
+import { notFound } from "../lib/errors.js";
+import {redisClient} from "../config/redis.js";
+import { hashRefreshToken } from "../utils/hashRefreshToken.js";
+
+
+
+
 // POST /login — verify credentials, then stash a short-lived MFA token in a
-// cookie (this replaces the old plaintext `username` cookie).
+// cookie
 export async function login(req, res) {
   const loginData = parse(loginSchema, req.body);
-  const { stage, mfaToken } = await service.login(loginData);
+  const { stage, mfaToken, userId } = await service.login(loginData);
 
+  await service.revokeRefreshTokensForUser(userId);
   setMfaCookie(res, mfaToken);
+
+  if (stage === service.Stage.PASSWORD_RESET_REQUIRED) {
+    return res.status(200).json({
+      mfaRequired: false,
+      passwordChangeRequired: true,
+      mfaEnrollmentRequired: true,
+    });
+  }
 
   if (stage === service.Stage.MFA_ENROLLMENT_REQUIRED) {
     return res.status(200).json({
       mfaRequired: false,
       mfaEnrollmentRequired: true,
-      message: "First login detected. Complete MFA enrollment.",
     });
   }
+
   return res.status(200).json({ mfaRequired: true });
+}
+
+export async function passwordReset(req, res) {
+  const passwordData = parse(passwordSchema, req.body);
+  const mfaToken = req.cookies?.[AUTH_COOKIES.mfa];
+
+  await service.changePassword(mfaToken, passwordData);
+  return res.send({ "status": 204, "message": "Password changed successfully." });
 }
 
 // POST /mfa/enroll/start — return the TOTP secret + QR for the authenticator app.
@@ -60,30 +82,70 @@ export async function verifyLogin(req, res) {
     mfaToken,
     code,
   );
-
   clearMfaCookie(res);
   setRefreshCookie(res, refreshToken);
 
   return res.status(200).json({ user, accessToken });
 }
 
+export async function stepUp(req, res) {
+  const { code } = parse(mfaCodeSchema, req.body);
+  const data = await service.createStepUpToken(req.user.id, code);
+  return res.status(200).json(data);
+}
+
 // POST /refresh — mint a new access token from the refresh cookie.
 export async function refresh(req, res) {
-  const refreshToken = req.cookies[AUTH_COOKIES.refresh];
-  const { accessToken } = await service.refresh(refreshToken);
 
-  setRefreshCookie(res, refreshToken);
+  const prevAccessToken = req.headers.authorization?.split(" ")[1];
+
+  if (!prevAccessToken) {
+    throw notFound("Access token not found in request headers");
+  }
+
+  
+  const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
+
+  if (!refreshToken) {
+    throw notFound("Refresh token not found in request cookies");
+  }
+
+  const isRevoked = await redisClient.get(`${hashRefreshToken(refreshToken)}`);
+
+  if(isRevoked) {
+    await service.revokeRefreshToken(refreshToken);
+    clearAuthCookies(res);
+    throw notFound("Refresh token has been revoked");
+  }
+
+  const { accessToken, newRefreshToken } = await service.refresh(refreshToken);
+  
+  await redisClient.set(`${prevAccessToken}`, "revoked");
+  setRefreshCookie(res, newRefreshToken);
 
   return res.status(200).json({ message: "Access token refreshed", accessToken });
 }
 
 // POST /logout — drop every auth cookie (access, refresh, and any stray MFA one).
 export async function logout(req, res) {
-  return res.status(200).json({ message: "Logged out" });
+  const accessToken = req.headers.authorization?.split(" ")[1];
+  
+  if (accessToken) {
+    await redisClient.set(`${accessToken}`, "revoked");
+  }
+
+  await service.revokeRefreshToken(req.cookies?.[AUTH_COOKIES.refresh]);
+  clearAuthCookies(res);
+  clearMfaCookie(res);
+  return res.send({
+    status: 204,
+    message: "Logged out successfully",
+  });
 }
 
 // GET /me — current user; requireAuth has already populated req.user.
 export async function me(req, res) {
   const user = await service.getMe(req.user.id);
+  console.log("Current user:", user);
   return res.status(200).json({ user });
 }

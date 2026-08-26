@@ -2,7 +2,7 @@
 //   - access  : short-lived (15m) session token, sent on every request
 //   - refresh : longer-lived (1d) token used only to mint new access tokens
 //   - mfa     : very short-lived token that carries the user between /login and
-//               MFA verification, replacing the old plaintext `username` cookie
+//               MFA verification
 //
 // Each class is signed with its own secret (config.jwt.*Secret) so a leak of one
 // cannot forge another. HS256 is pinned on verify to avoid algorithm-confusion.
@@ -40,6 +40,10 @@ export function signMfaToken(payload) {
   return sign(payload, cfg.mfaSecret, cfg.mfaExpiresIn, "mfa");
 }
 
+export function signStepUpToken(payload) {
+  return sign(payload, cfg.mfaSecret, cfg.stepUpExpiresIn, "step-up");
+}
+
 export function verifyAccessToken(token) {
   return verify(token, cfg.accessSecret, "access");
 }
@@ -50,4 +54,8 @@ export function verifyRefreshToken(token) {
 
 export function verifyMfaToken(token) {
   return verify(token, cfg.mfaSecret, "mfa");
+}
+
+export function verifyStepUpToken(token) {
+  return verify(token, cfg.mfaSecret, "step-up");
 }
