@@ -69,6 +69,8 @@ services:
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
+      # Fabric crypto (DEV-ONLY, gitignored). Only read when LEDGER_DRIVER=fabric.
+      - ./.fabric-crypto:/fabric/crypto:ro
     ports:
       - "3000:3000"
     networks:
@@ -90,6 +92,16 @@ services:
       STORAGE_SECRET_KEY: minioadmin
       STORAGE_FORCE_PATH_STYLE: "true"
       STORAGE_SSE: AES256
+      # Fabric integrity ledger (only used when LEDGER_DRIVER=fabric). Reaches the
+      # WSL2 test-network peer via the host gateway; crypto is mounted read-only.
+      # Endorsement is currently OR('Org1MSP.member'), so only the Org1 peer need
+      # be reachable (the AND(Org1,Org2) seal policy is a later hardening step).
+      FABRIC_PEER_ENDPOINT: host.docker.internal:7051
+      FABRIC_SIGN_CERT: /fabric/crypto/signcert.pem
+      FABRIC_SIGN_KEY: /fabric/crypto/key.pem
+      FABRIC_TLS_ROOT_CERT: /fabric/crypto/tls-ca.crt
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: sh -c "npm install && npx nodemon --legacy-watch src/app.js"
   worker:
     build:
@@ -107,6 +119,8 @@ services:
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
+      # Fabric crypto (DEV-ONLY, gitignored). Only read when LEDGER_DRIVER=fabric.
+      - ./.fabric-crypto:/fabric/crypto:ro
     networks:
       - internal
     # No ports: the worker is a background consumer, not an HTTP service. It
@@ -115,7 +129,16 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://redis:6379
-      LEDGER_DRIVER: memory
+      # LEDGER_DRIVER is intentionally NOT set here so it comes from .env (like the
+      # api): LEDGER_DRIVER=fabric in .env then enables the real ledger for BOTH
+      # the API and this worker at once. The worker is the process that anchors, so
+      # it needs Fabric reachability + crypto too.
+      FABRIC_PEER_ENDPOINT: host.docker.internal:7051
+      FABRIC_SIGN_CERT: /fabric/crypto/signcert.pem
+      FABRIC_SIGN_KEY: /fabric/crypto/key.pem
+      FABRIC_TLS_ROOT_CERT: /fabric/crypto/tls-ca.crt
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: sh -c "npm install && npx nodemon --legacy-watch src/worker.js"
   migrate:
     build:

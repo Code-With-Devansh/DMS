@@ -122,5 +122,20 @@ export default {
     // InMemoryLedgerService knob: "fail" makes every write throw, to exercise the
     // retry -> FAILED path. Any other value = normal operation.
     stubMode: process.env.LEDGER_STUB_MODE || "ok",
+    // FabricLedgerService (LEDGER_DRIVER=fabric) coordinates. Only read when the
+    // fabric driver is constructed; the cert/key PATHS point at the crypto material
+    // mounted into the container (docker-compose.dev.yml), copied DEV-ONLY out of
+    // the WSL test-network. peerHostAlias is the peer cert SAN — the gRPC TLS
+    // authority override used when dialing host.docker.internal (see fabricLedger.js).
+    fabric: {
+      channel: process.env.FABRIC_CHANNEL || "legal-channel",
+      chaincode: process.env.FABRIC_CHAINCODE || "document",
+      mspId: process.env.FABRIC_MSP_ID || "Org1MSP",
+      peerEndpoint: process.env.FABRIC_PEER_ENDPOINT || "host.docker.internal:7051",
+      peerHostAlias: process.env.FABRIC_PEER_HOST_ALIAS || "peer0.org1.example.com",
+      tlsRootCertPath: process.env.FABRIC_TLS_ROOT_CERT,
+      signCertPath: process.env.FABRIC_SIGN_CERT,
+      signKeyPath: process.env.FABRIC_SIGN_KEY,
+    },
   },
 };

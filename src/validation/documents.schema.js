@@ -24,3 +24,9 @@ export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+// Body for POST /documents/:id/seal — an optional human reason recorded in the
+// seal audit entry. Seal itself is authorized + MFA step-up gated at the route.
+export const sealSchema = z.object({
+  reason: z.string().trim().max(2000).optional(),
+});

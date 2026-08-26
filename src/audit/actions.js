@@ -11,8 +11,12 @@ export const AuditAction = Object.freeze({
   // ledger, VERSION_ANCHOR_FAILED when anchoring is abandoned after retries.
   VERSION_ANCHORED: "VERSION_ANCHORED",
   VERSION_ANCHOR_FAILED: "VERSION_ANCHOR_FAILED",
-  // Wired once the corresponding endpoints land:
+  // Integrity verify (request path): a version's stored bytes were re-hashed and
+  // checked against the mirror + the on-chain anchor. details carries the verdict.
+  VERSION_VERIFIED: "VERSION_VERIFIED",
+  // Emitted by POST /documents/:id/seal (real auth + MFA step-up).
   DOCUMENT_SEALED: "DOCUMENT_SEALED",
+  // Wired once the corresponding endpoint lands:
   DOCUMENT_DELETED: "DOCUMENT_DELETED",
 });
 

@@ -109,3 +109,30 @@ export async function setLedgerFailed(tx, { versionId }) {
     .returning();
   return row ?? null;
 }
+
+// ── integrity + seal state transitions ─────────────────────────────────────────
+
+// Record the outcome of an integrity re-hash on a version. Touches only the
+// mutable pipeline columns (integrity_status, integrity_checked_at) that the
+// immutability guard trigger permits. Runs inside the verify request's transaction
+// so the row change commits atomically with its audit entry.
+export async function setIntegrityChecked(tx, { versionId, integrityStatus, integrityCheckedAt }) {
+  const [row] = await tx
+    .update(documentVersions)
+    .set({ integrityStatus, integrityCheckedAt })
+    .where(eq(documentVersions.id, versionId))
+    .returning();
+  return row ?? null;
+}
+
+// Seal a document: flip documents.sealed so addVersion/restore refuse further
+// versions. Runs inside the seal request's transaction, after the ledger seal has
+// been submitted, alongside the DOCUMENT_SEALED audit entry.
+export async function setDocumentSealed(tx, { documentId }) {
+  const [row] = await tx
+    .update(documents)
+    .set({ sealed: true, updatedAt: new Date() })
+    .where(eq(documents.id, documentId))
+    .returning();
+  return row ?? null;
+}

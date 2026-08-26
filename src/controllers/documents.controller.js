@@ -5,6 +5,7 @@ import {
   createDocumentMetadataSchema,
   newVersionMetadataSchema,
   paginationSchema,
+  sealSchema,
 } from "../validation/documents.schema.js";
 import * as service from "../services/documents.service.js";
 
@@ -113,6 +114,36 @@ export async function restoreVersion(req, res) {
     sourceVersionId: vid,
     userId: req.user.id,
     ip: req.ip,
+  });
+  res.json(doc);
+}
+
+// Re-hash the current version's bytes and report the integrity verdict (DESIGN §4).
+export async function getIntegrity(req, res) {
+  const { id } = req.params;
+  await authorize({ user: req.user, action: "document:read", resource: { documentId: id } });
+  res.json(await service.verifyIntegrity(id, { userId: req.user.id, ip: req.ip }));
+}
+
+// The document's full chain-of-custody trail from the ledger (DESIGN §4).
+export async function getCustody(req, res) {
+  const { id } = req.params;
+  await authorize({ user: req.user, action: "document:read", resource: { documentId: id } });
+  res.json(await service.getCustody(id));
+}
+
+// Seal a document. The route gates this behind requireAuth + requireStepUp, so
+// req.user is the real authenticated caller (not the dev shim) whose step-up token
+// was verified for the same subject.
+export async function sealDocument(req, res) {
+  const { id } = req.params;
+  await authorize({ user: req.user, action: "document:seal", resource: { documentId: id } });
+  const { reason } = parse(sealSchema, req.body ?? {});
+  const doc = await service.sealDocument({
+    documentId: id,
+    userId: req.user.id,
+    ip: req.ip,
+    reason,
   });
   res.json(doc);
 }

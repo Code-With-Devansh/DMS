@@ -1,5 +1,6 @@
 import config from "../config/index.js";
 import { createInMemoryLedgerService } from "./inMemoryLedger.js";
+import { createFabricLedgerService } from "./fabricLedger.js";
 
 // App-wide LedgerService singleton. Import { ledger } from here in the anchor
 // worker (and, later, custody/seal/verify handlers); nothing else should
@@ -13,9 +14,10 @@ function buildLedger() {
     case "memory":
       return createInMemoryLedgerService({ mode: config.ledger.stubMode });
     case "fabric":
-      // FabricLedgerService (real @hyperledger/fabric-gateway client, wallet,
-      // connection profile) drops in here behind LEDGER_DRIVER=fabric.
-      throw new Error('LEDGER_DRIVER="fabric" is not implemented yet; use "memory"');
+      // Real @hyperledger/fabric-gateway client against the deployed `document`
+      // chaincode. The native gRPC/gateway deps load lazily here (createRequire in
+      // fabricLedger.js), so a "memory" boot never needs them installed.
+      return createFabricLedgerService(config.ledger.fabric);
     default:
       throw new Error(`unknown LEDGER_DRIVER: ${config.ledger.driver}`);
   }

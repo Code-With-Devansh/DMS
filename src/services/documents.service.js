@@ -5,6 +5,8 @@ import { conflict, notFound } from "../lib/errors.js";
 import * as repo from "../repositories/documents.repo.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { enqueueLedgerAnchor } from "../jobs/ledger.queue.js";
+import { ledger } from "../ledger/index.js";
+import { sha256HexOfStream, decideIntegrity, toCustodyEvents } from "../ledger/integrity.js";
 
 // ── DTO mappers (shapes per DESIGN §13) ───────────────────────────────────────
 function toVersionDTO(v) {
@@ -374,6 +376,151 @@ export async function restoreVersion({ documentId, sourceVersionId, userId, ip }
     classification: doc.classification,
     storageRef: storageKey,
     actor: userId,
+  });
+
+  return getDocument(documentId);
+}
+
+// ── integrity, custody, seal (ledger read/seal surface, DESIGN §4) ─────────────
+
+// Verify a document's current version by re-hashing the bytes actually in storage
+// and comparing against BOTH the mirror's recorded sha256 and the hash anchored on
+// the ledger. This ALWAYS reads the object (authoritative tamper detection, not a
+// metadata lookup — user decision), so it also catches storage-side corruption the
+// DB/ledger can't see. The verdict is persisted to the version's whitelisted-
+// mutable integrity_status / integrity_checked_at and written to the audit chain in
+// one transaction, mirroring the anchor worker (ledger read outside, DB+audit in).
+export async function verifyIntegrity(documentId, { userId, ip } = {}) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  const version = doc.currentVersionId
+    ? await repo.getVersionById(doc.currentVersionId)
+    : null;
+  if (!version) throw notFound("document has no current version to verify");
+
+  // Re-hash the object as it exists right now (streamed — evidence can be large).
+  const { body } = await storage.getObject(version.storageKey);
+  const recomputed = await sha256HexOfStream(body);
+
+  // Cross-check against the on-chain anchor. verifyHash yields the anchored record
+  // (or null when the version was never anchored); record.sha256 is the anchored
+  // hash — distinct from the mirror's version.sha256.
+  const { record } = await ledger.verifyHash(version.id, recomputed);
+  const ledgerHash = record?.sha256 ?? null;
+  const anchored = version.ledgerStatus === "ANCHORED";
+
+  const { status, matches } = decideIntegrity({
+    recomputed,
+    dbSha256: version.sha256,
+    ledgerHash,
+    anchored,
+  });
+
+  const checkedAt = new Date();
+  await db.transaction(async (tx) => {
+    await repo.setIntegrityChecked(tx, {
+      versionId: version.id,
+      integrityStatus: status,
+      integrityCheckedAt: checkedAt,
+    });
+    await recordAudit(tx, {
+      actorId: userId,
+      action: AuditAction.VERSION_VERIFIED,
+      targetType: TargetType.VERSION,
+      targetId: version.id,
+      ip,
+      details: {
+        documentId,
+        versionNo: version.versionNo,
+        status,
+        matches,
+        recomputed,
+        dbSha256: version.sha256,
+        ledgerHash,
+        anchored,
+      },
+    });
+  });
+
+  // Contract shape (DESIGN §4). `sha256` is the live recomputed hash so a TAMPERED
+  // result surfaces the drift; signatures stay [] until PKI lands.
+  return {
+    status,
+    sha256: recomputed,
+    ledgerTxId: version.ledgerTxId ?? null,
+    ledgerHash,
+    matches,
+    signatures: [],
+    lastCheckedAt: checkedAt.toISOString(),
+  };
+}
+
+// Full chain-of-custody trail for a document: every ledger event across ALL its
+// versions, merged and ordered oldest-first (DESIGN §4: GET /documents/:id/custody).
+// Pure read — no mutation, no audit entry.
+export async function getCustody(documentId) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  const versions = await repo.listVersions(documentId);
+  const perVersion = await Promise.all(
+    versions.map(async (v) => ({
+      versionNo: v.versionNo,
+      entries: await ledger.getDocumentHistory(v.id),
+    })),
+  );
+  return { events: toCustodyEvents(perVersion) };
+}
+
+// Seal a document: freeze it on the ledger and in the mirror so no further versions
+// can be added (DESIGN §4: POST /documents/:id/seal). Sensitive — the route gates
+// it behind real auth + MFA step-up. The ledger keys on versionId, so we seal the
+// current version; the on-chain seal (submitted BEFORE the DB write, same discipline
+// as the anchor worker) is the source of truth. Returns the updated Document.
+export async function sealDocument({ documentId, userId, ip, reason } = {}) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  if (doc.sealed) throw conflict("document is already sealed");
+  if (!doc.currentVersionId) {
+    throw conflict("document has no current version to seal");
+  }
+  const version = await repo.getVersionById(doc.currentVersionId);
+  // The ledger can only seal a version it has anchored; sealing an unanchored one
+  // would throw an opaque "version … not found" at the seam. Require ANCHORED so
+  // the caller gets a clean 409 instead.
+  if (!version || version.ledgerStatus !== "ANCHORED") {
+    throw conflict("current version is not yet anchored on the ledger");
+  }
+
+  // Seal on the ledger OUTSIDE the DB transaction. Treat an already-sealed record
+  // as idempotent success so a retry after a partial failure still reconciles the
+  // mirror (re-read to recover the txId/actorOrg).
+  let result;
+  try {
+    result = await ledger.sealDocument(doc.currentVersionId, userId);
+  } catch (err) {
+    if (!/already SEALED/i.test(String(err?.message ?? err))) throw err;
+    result = {
+      txId: version.ledgerTxId,
+      record: await ledger.getVersion(doc.currentVersionId),
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    await repo.setDocumentSealed(tx, { documentId });
+    await recordAudit(tx, {
+      actorId: userId,
+      action: AuditAction.DOCUMENT_SEALED,
+      targetType: TargetType.DOCUMENT,
+      targetId: documentId,
+      ip,
+      details: {
+        versionId: doc.currentVersionId,
+        versionNo: version.versionNo,
+        ledgerTxId: result?.txId ?? null,
+        actorOrg: result?.record?.actorOrg ?? null,
+        reason: reason ?? null,
+      },
+    });
   });
 
   return getDocument(documentId);
