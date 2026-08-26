@@ -50,6 +50,20 @@
       "when": 1787675062619,
       "tag": "0006_case_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787713850913,
+      "tag": "0007_gray_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787714405299,
+      "tag": "0008_stiff_gargoyle",
+      "breakpoints": true
     }
   ]
 }
