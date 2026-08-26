@@ -13,7 +13,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import {  docType, integrityStatus, processingStatus, classification } from "./enums.js";
+import {  docType, integrityStatus, processingStatus, classification, ledgerStatus } from "./enums.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // documents: one row per logical document (an FIR, a chargesheet, ...).
@@ -94,6 +94,12 @@ export const documentVersions = pgTable(
     integrityStatus: integrityStatus("integrity_status").notNull().default("PENDING"),
     ledgerTxId: text("ledger_tx_id"),
     integrityCheckedAt: timestamp("integrity_checked_at", { withTimezone: true }),
+    // Blockchain anchoring state machine. Inserted PENDING_LEDGER; the async
+    // ledger worker sets ledger_tx_id + anchored_at and flips this to ANCHORED,
+    // or to FAILED after exhausting retries. ledger_tx_id above is the on-chain
+    // handle once anchored.
+    ledgerStatus: ledgerStatus("ledger_status").notNull().default("PENDING_LEDGER"),
+    anchoredAt: timestamp("anchored_at", { withTimezone: true }),
 
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -113,5 +119,10 @@ export const documentVersions = pgTable(
     index("document_versions_pending_idx")
       .on(t.processingStatus)
       .where(sql`${t.processingStatus} <> 'READY' and ${t.processingStatus} <> 'FAILED'`),
+    // Lets a future reconciliation sweeper find versions not yet anchored
+    // (PENDING_LEDGER or FAILED) without scanning already-anchored rows.
+    index("document_versions_ledger_pending_idx")
+      .on(t.ledgerStatus)
+      .where(sql`${t.ledgerStatus} <> 'ANCHORED'`),
   ],
 );

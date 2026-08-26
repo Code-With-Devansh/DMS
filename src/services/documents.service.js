@@ -4,6 +4,7 @@ import { storage, versionStorageKey } from "../storage/index.js";
 import { conflict, notFound } from "../lib/errors.js";
 import * as repo from "../repositories/documents.repo.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
+import { enqueueLedgerAnchor } from "../jobs/ledger.queue.js";
 
 // ── DTO mappers (shapes per DESIGN §13) ───────────────────────────────────────
 function toVersionDTO(v) {
@@ -16,6 +17,8 @@ function toVersionDTO(v) {
     sizeBytes: Number(v.sizeBytes),
     sha256: v.sha256,
     ledgerTxId: v.ledgerTxId ?? undefined,
+    ledgerStatus: v.ledgerStatus,
+    anchoredAt: v.anchoredAt ?? undefined,
     signatureCount: 0, // signatures not implemented yet (DESIGN §4)
     uploadedBy: { id: v.createdBy }, // hydrate to UserSummary once users lands
     note: v.note ?? undefined,
@@ -37,6 +40,8 @@ function toDocumentDTO(doc, currentVer, versionsCount) {
     currentVersionNo: currentVer?.versionNo ?? null,
     integrityStatus: currentVer?.integrityStatus ?? "PENDING",
     processingStatus: currentVer?.processingStatus ?? "READY",
+    ledgerStatus: currentVer?.ledgerStatus ?? "PENDING_LEDGER",
+    anchoredAt: currentVer?.anchoredAt ?? null,
     versionsCount,
     tags: doc.tags ?? [],
     sealed: doc.sealed,
@@ -80,8 +85,9 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
     metadata: { sha256 },
   });
 
+  let created;
   try {
-    await db.transaction(async (tx) => {
+    created = await db.transaction(async (tx) => {
       await repo.insertDocument(tx, {
         id: documentId,
         caseId,
@@ -122,11 +128,26 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
           sha256,
         },
       });
+      return version;
     });
   } catch (err) {
     await storage.deleteObject(storageKey).catch(() => {});
     throw err;
   }
+
+  // Anchor the new version's hash on the ledger — AFTER commit, so the worker is
+  // guaranteed to find the committed row. Fail-open: a failed enqueue never fails
+  // the upload; the row just stays PENDING_LEDGER for later reconciliation.
+  await enqueueLedgerAnchor({
+    versionId,
+    docId: documentId,
+    caseId,
+    versionNo: created.versionNo,
+    sha256,
+    classification: metadata.classification,
+    storageRef: storageKey,
+    actor: userId,
+  });
 
   return getDocument(documentId);
 }
@@ -187,6 +208,18 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
     await storage.deleteObject(storageKey).catch(() => {});
     throw err;
   }
+
+  // Anchor after commit (fail-open) — see createDocument.
+  await enqueueLedgerAnchor({
+    versionId,
+    docId: documentId,
+    caseId: doc.caseId,
+    versionNo: version.versionNo,
+    sha256,
+    classification: doc.classification,
+    storageRef: storageKey,
+    actor: userId,
+  });
 
   return toVersionDTO(version);
 }
@@ -292,8 +325,9 @@ export async function restoreVersion({ documentId, sourceVersionId, userId, ip }
     metadata: { sha256: source.sha256 },
   });
 
+  let restored;
   try {
-    await db.transaction(async (tx) => {
+    restored = await db.transaction(async (tx) => {
       const inserted = await repo.insertVersion(tx, {
         id: newVersionId,
         documentId,
@@ -322,11 +356,25 @@ export async function restoreVersion({ documentId, sourceVersionId, userId, ip }
           fileName: source.fileName,
         },
       });
+      return inserted;
     });
   } catch (err) {
     await storage.deleteObject(storageKey).catch(() => {});
     throw err;
   }
+
+  // Anchor after commit (fail-open) — see createDocument. Restored content is
+  // byte-identical to the source, so we anchor the source's sha256.
+  await enqueueLedgerAnchor({
+    versionId: newVersionId,
+    docId: documentId,
+    caseId: doc.caseId,
+    versionNo: restored.versionNo,
+    sha256: source.sha256,
+    classification: doc.classification,
+    storageRef: storageKey,
+    actor: userId,
+  });
 
   return getDocument(documentId);
 }

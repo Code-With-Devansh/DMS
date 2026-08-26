@@ -1,5 +1,5 @@
 {
-  "id": "0088f000-3e2d-4ed1-a797-bf3e50f84e24",
+  "id": "cd1b04b6-2a15-4b0a-8e5b-36937926d848",
   "prevId": "37702c96-f208-4f2c-a7dd-52ded1b5d98f",
   "version": "7",
   "dialect": "postgresql",
@@ -97,6 +97,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ledger_status": {
+          "name": "ledger_status",
+          "type": "ledger_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING_LEDGER'"
+        },
+        "anchored_at": {
+          "name": "anchored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -160,6 +174,22 @@
           ],
           "isUnique": false,
           "where": "\"document_versions\".\"processing_status\" <> 'READY' and \"document_versions\".\"processing_status\" <> 'FAILED'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_versions_ledger_pending_idx": {
+          "name": "document_versions_ledger_pending_idx",
+          "columns": [
+            {
+              "expression": "ledger_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"document_versions\".\"ledger_status\" <> 'ANCHORED'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1124,6 +1154,15 @@
         "VERIFIED",
         "TAMPERED",
         "PENDING"
+      ]
+    },
+    "public.ledger_status": {
+      "name": "ledger_status",
+      "schema": "public",
+      "values": [
+        "PENDING_LEDGER",
+        "ANCHORED",
+        "FAILED"
       ]
     },
     "public.processing_status": {

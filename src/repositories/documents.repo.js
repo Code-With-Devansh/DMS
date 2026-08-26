@@ -83,3 +83,29 @@ export async function countVersions(documentId) {
     .where(eq(documentVersions.documentId, documentId));
   return Number(row?.total ?? 0);
 }
+
+// ── ledger anchoring state transitions ─────────────────────────────────────────
+// Both run inside the anchor worker's transaction (so the row change commits
+// atomically with its audit entry). They touch only the mutable ledger columns,
+// which the immutability guard trigger permits.
+
+// PENDING_LEDGER -> ANCHORED: stamp the on-chain tx id and anchor time.
+export async function setLedgerAnchored(tx, { versionId, ledgerTxId, anchoredAt }) {
+  const [row] = await tx
+    .update(documentVersions)
+    .set({ ledgerStatus: "ANCHORED", ledgerTxId, anchoredAt })
+    .where(eq(documentVersions.id, versionId))
+    .returning();
+  return row ?? null;
+}
+
+// PENDING_LEDGER -> FAILED: anchoring abandoned after exhausting retries. Leaves
+// ledger_tx_id/anchored_at null so a reconciliation sweep can retry later.
+export async function setLedgerFailed(tx, { versionId }) {
+  const [row] = await tx
+    .update(documentVersions)
+    .set({ ledgerStatus: "FAILED" })
+    .where(eq(documentVersions.id, versionId))
+    .returning();
+  return row ?? null;
+}

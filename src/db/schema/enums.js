@@ -43,6 +43,14 @@ export const processingStatus = pgEnum("processing_status", [
   "FAILED",
 ]);
 
+// Per-version blockchain anchoring state. A version is inserted PENDING_LEDGER;
+// the async ledger worker anchors its hash on-chain and flips it to ANCHORED
+// (writing ledger_tx_id + anchored_at) or FAILED after exhausting retries.
+export const ledgerStatus = pgEnum("ledger_status", [
+  "PENDING_LEDGER",
+  "ANCHORED",
+  "FAILED",
+])
 export const caseStatus = pgEnum("case_status", [
   "OPEN",
   "UNDER_INVESTIGATION",
