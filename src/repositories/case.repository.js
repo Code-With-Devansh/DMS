@@ -6,8 +6,6 @@ import { caseOfficers, cases, documents } from "../db/schema/index.js";
 class CaseRepository {
 	async create(values, tx = db) {
 		const [row] = await tx.insert(cases).values(values).returning();
-        console.log("Created case:", row);
-        
 		return row;
 	}
 
@@ -16,7 +14,7 @@ class CaseRepository {
 		return row ?? null;
 	}
 
-	async list({ status, q, assignedToMe, userId, page, pageSize }) {
+	async list({ status, q, assignedToMe, userId, userRole, userClearance, jurisdiction, page, pageSize }) {
 		const conditions = [];
 		if (status) conditions.push(eq(cases.status, status));
 		if (q) {
@@ -36,6 +34,27 @@ class CaseRepository {
 						.select({ caseId: caseOfficers.caseId })
 						.from(caseOfficers)
 						.where(eq(caseOfficers.userId, userId)),
+				),
+			);
+		}
+		if (jurisdiction) conditions.push(eq(cases.jurisdiction, jurisdiction));
+		const clearanceValues = ["PUBLIC", "RESTRICTED", "CONFIDENTIAL", "SECRET"];
+		const clearanceIndex = clearanceValues.indexOf(userClearance);
+		if (clearanceIndex < 0) {
+			conditions.push(eq(cases.id, "00000000-0000-0000-0000-000000000000"));
+		} else {
+			conditions.push(inArray(cases.classification, clearanceValues.slice(0, clearanceIndex + 1)));
+		}
+		if (!["SUPERVISOR", "ORG_ADMIN", "SYSTEM_ADMIN"].includes(userRole)) {
+			conditions.push(
+				or(
+					eq(cases.createdBy, userId),
+					inArray(
+						cases.id,
+						db.select({ caseId: caseOfficers.caseId })
+							.from(caseOfficers)
+							.where(eq(caseOfficers.userId, userId)),
+					),
 				),
 			);
 		}

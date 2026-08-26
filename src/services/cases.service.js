@@ -1,5 +1,8 @@
-import { conflict, notFound } from "../lib/errors.js";
+import { conflict, forbidden, notFound } from "../lib/errors.js";
 import caseRepository from "../repositories/case.repository.js";
+import userRepository from "../repositories/user.repository.js";
+
+const clearanceRank = { PUBLIC: 0, RESTRICTED: 1, CONFIDENTIAL: 2, SECRET: 3 };
 
 function userSummary(id) {
   return { id };
@@ -44,7 +47,13 @@ async function toCase(row) {
 }
 
 export async function listCases(filters) {
-  const result = await caseRepository.list(filters);
+  const user = await userRepository.findById(filters.userId);
+  const result = await caseRepository.list({
+    ...filters,
+    userRole: user?.role,
+    userClearance: user?.clearance,
+    jurisdiction: user?.jurisdiction,
+  });
   const documentCounts = await Promise.all(
     result.rows.map((row) => caseRepository.countDocuments(row.id)),
   );
@@ -57,6 +66,17 @@ export async function listCases(filters) {
 }
 
 export async function createCase(values, userId) {
+  const user = await userRepository.findById(userId);
+  if (
+    !user ||
+    user.status !== "ACTIVE" ||
+    user.jurisdiction !== values.jurisdiction ||
+    clearanceRank[user.clearance] === undefined ||
+    clearanceRank[values.classification] === undefined ||
+    clearanceRank[user.clearance] < clearanceRank[values.classification]
+  ) {
+    throw forbidden("case is outside the user's authorization scope");
+  }
   const row = await caseRepository.create({ ...values, createdBy: userId });
   return toCase(row);
 }
@@ -73,6 +93,11 @@ export async function updateCase(id, values) {
 
 export async function assignOfficer(caseId, { userId, roleOnCase }, assignedBy) {
   await requireCase(caseId);
+
+  const user = await userRepository.findById(userId);
+  if (!user || user.status !== "ACTIVE") throw notFound("user not found");
+
+
   await caseRepository.assignOfficer({
     caseId,
     userId,

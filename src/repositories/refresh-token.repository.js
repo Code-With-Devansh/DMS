@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { refreshTokens } from "../db/schema/refresh_tokens.js";
 
-import { redisClient } from "../lib/redis.js";
+import  redisClient from "../config/redis.js";
 import { hashRefreshToken } from "../utils/hashRefreshToken.js";
 
 

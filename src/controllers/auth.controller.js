@@ -10,7 +10,7 @@ import {
 } from "../lib/cookies.js";
 
 import { notFound } from "../lib/errors.js";
-import {redisClient} from "../config/redis.js";
+import redisClient from "../config/redis.js";
 import { hashRefreshToken } from "../utils/hashRefreshToken.js";
 
 
@@ -48,7 +48,7 @@ export async function passwordReset(req, res) {
   const mfaToken = req.cookies?.[AUTH_COOKIES.mfa];
 
   await service.changePassword(mfaToken, passwordData);
-  return res.send({ "status": 204, "message": "Password changed successfully." });
+  return res.send({ "status": 200, "message": "Password changed successfully." });
 }
 
 // POST /mfa/enroll/start — return the TOTP secret + QR for the authenticator app.
@@ -103,7 +103,7 @@ export async function refresh(req, res) {
     throw notFound("Access token not found in request headers");
   }
 
-  
+
   const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
 
   if (!refreshToken) {
@@ -112,14 +112,14 @@ export async function refresh(req, res) {
 
   const isRevoked = await redisClient.get(`${hashRefreshToken(refreshToken)}`);
 
-  if(isRevoked) {
+  if (isRevoked) {
     await service.revokeRefreshToken(refreshToken);
     clearAuthCookies(res);
     throw notFound("Refresh token has been revoked");
   }
 
   const { accessToken, newRefreshToken } = await service.refresh(refreshToken);
-  
+
   await redisClient.set(`${prevAccessToken}`, "revoked");
   setRefreshCookie(res, newRefreshToken);
 
@@ -129,7 +129,7 @@ export async function refresh(req, res) {
 // POST /logout — drop every auth cookie (access, refresh, and any stray MFA one).
 export async function logout(req, res) {
   const accessToken = req.headers.authorization?.split(" ")[1];
-  
+
   if (accessToken) {
     await redisClient.set(`${accessToken}`, "revoked");
   }
