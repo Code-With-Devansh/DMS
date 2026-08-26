@@ -1,6 +1,6 @@
 import express from "express";
 import * as ctrl from "../controllers/cases.controller.js";
-import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth, requireStepUp } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ router.get("/cases/:id", ctrl.getCase);
 router.patch("/cases/:id", ctrl.updateCase);
 router.post("/cases/:id/officers", ctrl.addOfficer);
 router.delete("/cases/:id/officers/:userId", ctrl.removeOfficerFromCase);
-router.delete("/cases/:id/legal-hold", ctrl.setHoldReason);
-router.post("/cases/:id/legal-hold", ctrl.releaseHold);
+router.delete("/cases/:id/legal-hold", requireStepUp, ctrl.setHoldReason);
+router.post("/cases/:id/legal-hold", requireStepUp, ctrl.releaseHold);
 
 export default router;

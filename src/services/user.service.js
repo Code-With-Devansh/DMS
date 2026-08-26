@@ -64,12 +64,32 @@ async function resolveMfaUser(mfaToken) {
   return user;
 }
 
+async function resolveRefreshUser(refreshToken) {
+  if (!refreshToken) throw unauthenticated("Refresh token missing");
+  let payload;
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  }
+  catch {
+    throw unauthenticated("Refresh token invalid or expired");
+  }
+  const storedToken = await refreshTokenRepository.findActiveByToken(refreshToken);
+  if (!storedToken || storedToken.userId !== payload.sub) {
+    throw unauthenticated("Refresh token revoked or unknown");
+  }
+  const user = await userRepository.findById(payload.sub);
+  if (!user) throw unauthenticated("User no longer exists");
+  return user;
+}
+
+
+
 // Step 1 of login: validate credentials and hand back a short-lived MFA token
 // (no access/refresh yet — those are only issued once MFA succeeds).
 export async function login({ username, password }) {
   const user = await userRepository.findByUsername(username);
 
-  if (!user) throw notFound("Invalid username or password.");
+  if (!user) throw invalidCredentials();
 
   const passwordValid = (await argon2.verify(user.hashedPassword, password));
   if (!passwordValid) throw invalidCredentials();
@@ -167,7 +187,7 @@ export async function verifyLogin(mfaToken, code) {
 }
 
 export async function createStepUpToken(userId, code) {
-  const user = await userRepository.findUserById(userId);
+  const user = await userRepository.findById(userId);
   if (!user || user.status !== "ACTIVE") {
     throw unauthenticated("User is not active");
   }
@@ -202,15 +222,6 @@ export async function refresh(refreshToken) {
 
   const storedToken = await refreshTokenRepository.findActiveByToken(refreshToken);
 
-  if (storedToken.revokedAt) {
-    await refreshTokenRepository.revokeAllForUser(payload.sub);
-    throw unauthenticated("Refresh token revoked");
-  }
-
-  if (!storedToken || storedToken.userId !== payload.sub) {
-    throw unauthenticated("Refresh token revoked or unknown");
-  }
-
   if (!storedToken || storedToken.userId !== payload.sub) {
     throw unauthenticated("Refresh token revoked or unknown");
   }
@@ -226,18 +237,17 @@ export async function refresh(refreshToken) {
   });
 
   const newRefreshToken = signRefreshToken({ sub: user.id });
+  const refreshTokenExpiry = verifyRefreshToken(newRefreshToken).exp;
 
   const newRefreshTokenRecord = await refreshTokenRepository.create({
     token: newRefreshToken,
     userId: user.id,
-    expiresAt: new Date(payload.exp * 1000),
+    expiresAt: new Date(refreshTokenExpiry * 1000),
   });
 
   console.log("Revoking old refresh token and linking to new one:", storedToken.id, newRefreshTokenRecord.id);
 
   await refreshTokenRepository.revokeToken(refreshToken, newRefreshTokenRecord.id);
-
-
 
   return { accessToken, newRefreshToken };
 }
