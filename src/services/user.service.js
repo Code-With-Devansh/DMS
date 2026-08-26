@@ -247,6 +247,14 @@ export async function revokeRefreshToken(refreshToken) {
   await refreshTokenRepository.revokeToken(refreshToken);
 }
 
+export async function revokeRefreshTokens(refreshToken) {
+  if (!refreshToken) return;
+  const storedToken = await refreshTokenRepository.findByToken(refreshToken);
+  if (!storedToken) return;
+  await refreshTokenRepository.revokeAllForUser(storedToken.userId);
+}
+
+
 export async function revokeRefreshTokensForUser(userId) {
   await refreshTokenRepository.revokeAllForUser(userId);
 }

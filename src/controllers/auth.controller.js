@@ -9,6 +9,12 @@ import {
   clearAuthCookies,
 } from "../lib/cookies.js";
 
+import { notFound } from "../lib/errors.js";
+import {redisClient} from "../config/redis.js";
+import { hashRefreshToken } from "../utils/hashRefreshToken.js";
+
+
+
 
 // POST /login — verify credentials, then stash a short-lived MFA token in a
 // cookie
@@ -90,9 +96,31 @@ export async function stepUp(req, res) {
 
 // POST /refresh — mint a new access token from the refresh cookie.
 export async function refresh(req, res) {
-  const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
-  const { accessToken, newRefreshToken } = await service.refresh(refreshToken);
 
+  const prevAccessToken = req.headers.authorization?.split(" ")[1];
+
+  if (!prevAccessToken) {
+    throw notFound("Access token not found in request headers");
+  }
+
+  
+  const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
+
+  if (!refreshToken) {
+    throw notFound("Refresh token not found in request cookies");
+  }
+
+  const isRevoked = await redisClient.get(`${hashRefreshToken(refreshToken)}`);
+
+  if(isRevoked) {
+    await service.revokeRefreshToken(refreshToken);
+    clearAuthCookies(res);
+    throw notFound("Refresh token has been revoked");
+  }
+
+  const { accessToken, newRefreshToken } = await service.refresh(refreshToken);
+  
+  await redisClient.set(`${prevAccessToken}`, "revoked");
   setRefreshCookie(res, newRefreshToken);
 
   return res.status(200).json({ message: "Access token refreshed", accessToken });
@@ -100,10 +128,19 @@ export async function refresh(req, res) {
 
 // POST /logout — drop every auth cookie (access, refresh, and any stray MFA one).
 export async function logout(req, res) {
+  const accessToken = req.headers.authorization?.split(" ")[1];
+  
+  if (accessToken) {
+    await redisClient.set(`${accessToken}`, "revoked");
+  }
+
   await service.revokeRefreshToken(req.cookies?.[AUTH_COOKIES.refresh]);
   clearAuthCookies(res);
   clearMfaCookie(res);
-  return res.status(204).send();
+  return res.send({
+    status: 204,
+    message: "Logged out successfully",
+  });
 }
 
 // GET /me — current user; requireAuth has already populated req.user.
