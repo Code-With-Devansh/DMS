@@ -2,7 +2,8 @@
 ## Conventions (read first)
 
 - **Base path:** `/api/v1/`
-- **Auth:** session in an **httpOnly cookie** — the frontend sends access token in body, `401` = not logged in, `403` = logged in but not allowed.
+- **Auth:** session in an **httpOnly cookie** — the frontend sends refresh token, mfa token in cookies , `401` = not logged in, `403` = logged in but not allowed. while access token is send using bearer token.
+
 - **Content-Type:** `application/json`, except file uploads (`multipart/form-data`).
 - **Sensitive actions** (seal, delete, export, sign, permission change) require a **step-up** header: `X-Step-Up-Token: <token>` — else `403 { code: "STEP_UP_REQUIRED" }`.
 - **Errors:** always `{ error: { code, message, details? } }`. Codes: `UNAUTHENTICATED`, `FORBIDDEN`, `STEP_UP_REQUIRED`, `NOT_FOUND`, `VALIDATION`, `CONFLICT`, `LEGAL_HOLD`, `INTEGRITY_FAILED`.
@@ -34,6 +35,11 @@ interface User extends UserSummary {
   email: string; clearance: Classification; jurisdiction: string;
   status: "ACTIVE" | "DISABLED"; mfaEnrolled: boolean;
   createdAt: ISODate; lastLoginAt?: ISODate;
+
+  backup_codes; string; // stringified array of hashed backup codes
+
+  username: string; password: string;
+
 }
 interface Me extends User { permissions: string[]; }   // drives the <Can> component
 
@@ -79,19 +85,21 @@ interface Notification { id: ID; type: string; message: string; link?: string; r
 ```ts
 POST /auth/login
   Req: { username: string; password: string }
-  Res 200: { mfaRequired: boolean; user?: Me }        // sets pre-auth cookie if mfaRequired
+  Res 200: { mfaRequired: boolean; }        // sets pre-auth cookie if mfaRequired
 
 POST /auth/mfa/verify
   Req: { code: string }
-  Res 200: { user: Me }                                // sets full session cookie
+  Res 200: { user: Me, accessToken }                                // sets full session cookie
 
 POST /auth/logout            Res 204
 GET  /auth/me                Res 200: Me               // current user + permissions
 
 // First login / MFA enrollment
+
+// user can change password till he/she has not setup mfa or login once.
 POST /auth/password          Req: { currentPassword?: string; newPassword: string }   Res 204
 POST /auth/mfa/enroll/start  Res 200: { secret: string; otpauthUrl: string; qrDataUrl: string }
-POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: string[] }
+POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: string[], user: Me, accessToken }
 
 // Step-up for sensitive actions
 POST /auth/step-up           Req: { code: string }     Res 200: { stepUpToken: string; expiresAt: ISODate }

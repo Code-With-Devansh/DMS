@@ -22,6 +22,8 @@ const clearanceRank = {
 const elevatedCaseRoles = new Set(["SUPERVISOR", "ORG_ADMIN", "SYSTEM_ADMIN"]);
 
 const permissionAliases = {
+  "user:read": ["user:read", "user:manage"],
+  "user:manage": ["user:manage"],
   "case:list": ["case:list", "case:read", "cases:read"],
   "case:read": ["case:read", "cases:read"],
   "case:create": ["case:create", "case:manage", "cases:manage"],

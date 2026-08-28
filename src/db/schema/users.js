@@ -28,9 +28,9 @@ export const users = pgTable(
     clearance: classification("clearance").notNull(),
     jurisdiction: text("jurisdiction").notNull(),
     status: status("status").notNull(),
-    mfaEnrolled: boolean("mfa_enrolled").notNull().default(false),
     
     // mfa secrets and backup codes so that we can verify the user during login
+    mfaEnrolled: boolean("mfa_enrolled").notNull().default(false),
     mfaTempSecret: text("mfa_temp_secret"),
     mfaSecret: text("mfa_secret"),
 
@@ -43,7 +43,6 @@ export const users = pgTable(
     backupCodes: text("backup_codes"),
 
     // timestamps for auditing and security purposes
-    passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     

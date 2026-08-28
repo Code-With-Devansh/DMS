@@ -8,6 +8,22 @@ import { hashRefreshToken } from "../utils/hashRefreshToken.js";
 
 
 class RefreshTokenRepository {
+    async findById(id) {
+        const [refreshToken] = await db.select().from(refreshTokens).where(eq(refreshTokens.id, id)).limit(1);
+        return refreshToken;
+    }
+
+    async listActiveForUser(userId) {
+        return db.select({
+            id: refreshTokens.id,
+            createdAt: refreshTokens.createdAt,
+            expiresAt: refreshTokens.expiresAt,
+        }).from(refreshTokens).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+    }
+
+    async revokeById(id, userId) {
+        await db.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.id, id), eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+    }
     async create({ token, userId, expiresAt }) {
         const [refreshToken] = await db
             .insert(refreshTokens)
