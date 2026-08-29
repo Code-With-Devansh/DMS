@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles",
     "dev": "docker compose -f docker-compose.dev.yml up --build",
     "migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
@@ -36,7 +36,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "babel-jest": "^30.5.0",
     "drizzle-kit": "^0.31.10",
-    "jest": "^30.4.2"
+    "jest": "^30.5.0",
+    "supertest": "^7.2.2"
   }
 }

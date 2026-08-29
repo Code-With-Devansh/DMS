@@ -76,7 +76,10 @@ export async function verifyMfaEnrollment(req, res) {
 
     const {backupCodes, user, accessToken, refreshToken} = await service.verifyMfaEnrollment(userId, code);
     clearMfaCookie(res);
-    setRefreshCookie(res, refeshToken);
+    setRefreshCookie(res, refreshToken);
+    redisClient.set(`${hashRefreshToken(refreshToken)}`, "active");
+    redisClient.set(`${accessToken}`, "active");
+    
     return res.status(200).json({backUpCodes: backupCodes, user, accessToken});
 }
 
@@ -115,17 +118,27 @@ export async function refresh(req, res) {
         throw notFound("Refresh token not found in request cookies");
     }
 
-    const userId = getUserIdFromRefreshToken(refreshToken);
+    let userId;
+
+    try{
+        userId = getUserIdFromRefreshToken(refreshToken);
+    }catch (error) {
+        throw notFound("Invalid refresh token");
+    }
+
     if (!userId) {
         throw notFound("Invalid refresh token");
     }
 
-    const isRevoked = await redisClient.exists(`${hashRefreshToken(refreshToken)}`);
-    if (isRevoked) {
-        await service.revokeRefreshTokens(userId);
+    const isRevoked = await redisClient.get(`${hashRefreshToken(refreshToken)}`);
+
+    if (isRevoked == "revoked") {
+        await service.revokeRefreshToken(userId);
         clearAuthCookies(res);
+        clearMfaCookie(res);
         throw notFound("Refresh token has been revoked");
     }
+
     const {accessToken, newRefreshToken} = await service.refresh(userId, prevAccessToken, refreshToken);
     setRefreshCookie(res, newRefreshToken);
     return res.status(200).json({message: "Access token refreshed", accessToken});
@@ -141,7 +154,7 @@ export async function logout(req, res) {
             EX: 15 * 60 * 60,
         });
     }
-
+    
     if(refreshToken){
         const userId = getUserIdFromRefreshToken(refreshToken);
         if (!userId) {
@@ -152,10 +165,7 @@ export async function logout(req, res) {
 
     clearAuthCookies(res);
     clearMfaCookie(res);
-    return res.send({
-        status: 204,
-        message: "Logged out successfully",
-    });
+    return res.status(204).send();
 }
 
 // GET /me — current user; requireAuth has already populated req.user.
@@ -163,3 +173,5 @@ export async function aboutUser(req, res) {
     const user = await service.getMe(req.user.id);
     return res.status(200).json({user});
 }
+
+

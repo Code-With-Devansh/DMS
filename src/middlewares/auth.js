@@ -19,7 +19,7 @@ export async function requireAuth(req, res, next) {
 
   const isRevoked = await redisClient.get(`${token}`);
 
-  if (isRevoked) {
+  if (isRevoked == "revoked") {
     return next(unauthenticated("Access token has been revoked"));
   }
 

@@ -103,6 +103,9 @@ POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: s
 
 // Step-up for sensitive actions
 POST /auth/step-up           Req: { code: string }     Res 200: { stepUpToken: string; expiresAt: ISODate }
+
+POST /auth/refresh cookie: refresh_token and Bearer Access-Token Res 200: { accessToken }
+
 ```
 
 ## 2. Cases
