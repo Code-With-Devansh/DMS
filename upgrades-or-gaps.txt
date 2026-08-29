@@ -1,0 +1,11 @@
+1. Seal does not gate on integrity. The document above sealed while integrityStatus:TAMPERED. That matches the plan (seal checks anchoring, not byte-integrity), but it means a tampered document can still be sealed. If seal should require VERIFIED first, that's a small, well-contained follow-up.
+
+2. /cases/:id/legal-hold has DELETE wired to setHoldReason and POST wired to releaseHold — that looks swapped (setting a hold should be POST, releasing should be DELETE).
+
+3. Documents and audit routes aren't behind requireAuth — only the currentUser dev shim, which fabricates a user if req.user is unset. Only POST /documents/:id/seal has real auth.
+
+4. Dev identity shim (currentUser): if no req.user is already set, injects a fixed dev user id from config. This is currently mounted on all documents/* and audit/* routes except POST /documents/:id/seal.
+
+5. LEGAL_HOLD_REQUIRED and INTEGRITY_FAILED error codes are defined but no code path throws them yet — likely still landing.
+
+6. POST /logout returns HTTP 200 with a body claiming status: 204 rather than an actual 204 No Content.
