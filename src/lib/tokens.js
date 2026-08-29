@@ -10,7 +10,6 @@ import jwt from "jsonwebtoken";
 import config from "../config/index.js";
 
 const { jwt: cfg } = config;
-
 const SIGN_OPTS = { algorithm: "HS256" };
 const VERIFY_OPTS = { algorithms: ["HS256"] };
 
@@ -58,4 +57,18 @@ export function verifyMfaToken(token) {
 
 export function verifyStepUpToken(token) {
   return verify(token, cfg.mfaSecret, "step-up");
+}
+
+export function getUserIdFromMfaToken(token) {
+  const decoded = verifyMfaToken(token);
+  return decoded.sub;
+}
+
+export function getUserIdFromRefreshToken(token) {
+  const decoded = verifyRefreshToken(token);
+  return decoded.sub;
+}
+export function getRefreshExpiryTime(token) {
+  const decoded = verifyRefreshToken(token);
+  return decoded.exp;
 }

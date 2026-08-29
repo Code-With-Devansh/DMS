@@ -13,7 +13,6 @@ export const refreshTokens = pgTable(
 		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 		revokedAt: timestamp("revoked_at", { withTimezone: true }),
-        newRefreshTokenId: uuid("new_refresh_token_id").references(() => refreshTokens.id, { onDelete: "set null" }),
 	},
 	(t) => [
 		uniqueIndex("refresh_tokens_token_hash_key").on(t.tokenHash),

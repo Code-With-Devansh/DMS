@@ -6,19 +6,18 @@ const router = express.Router();
 
 // Login + MFA handshake
 router.post("/login", ctrl.login);
-router.post("/password", ctrl.passwordReset);
-router.post("/mfa/enroll/start", ctrl.startEnrollment);
-router.post("/mfa/enroll/verify", ctrl.verifyEnrollment);
-router.post("/mfa/verify", ctrl.verifyLogin);
+router.post("/password", ctrl.changePassword);
+router.post("/mfa/enroll/start", ctrl.startMfaEnrollment);
+router.post("/mfa/enroll/verify", ctrl.verifyMfaEnrollment);
+router.post("/mfa/verify", ctrl.verifyMfa);
 router.post("/step-up", requireAuth, ctrl.stepUp);
 
 // Session lifecycle
 router.post("/refresh", ctrl.refresh);
-router.post("/logout", ctrl.logout);
+router.post("/logout",requireAuth, ctrl.logout);
 
 // Current user (requires a valid access token)
-router.get("/me", requireAuth, ctrl.me);
-
+router.get("/me", requireAuth, ctrl.aboutUser);
 
 
 export default router;
