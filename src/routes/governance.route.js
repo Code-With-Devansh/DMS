@@ -1,0 +1,27 @@
+import express from "express";
+import * as ctrl from "../controllers/governance.controller.js";
+import { requireAuth, requireStepUp } from "../middlewares/auth.js";
+
+const router = express.Router();
+
+// Bootstrap is registered BEFORE requireAuth on purpose: at genesis no admin
+// exists to authenticate as. It is gated by the secret commitment + the
+// empty-admin_pools precondition in the service, and is intended to be reachable
+// only over an admin-only channel (called by the genesis CLI). This is the one
+// governance route not behind requireAuth — see GOVERNANCE.md §6.4.
+router.post("/governance/bootstrap", ctrl.bootstrap);
+
+router.use(requireAuth);
+
+router.get("/governance/proposals", ctrl.listProposals);
+router.post("/governance/proposals", ctrl.fileProposal);
+router.get("/governance/proposals/:id", ctrl.getProposal);
+router.post("/governance/proposals/:id/object", ctrl.objectProposal);
+
+// approve + execute are each a freshly-authenticated action: requireStepUp
+// enforces a per-action step-up token, and approve persists its jti as a
+// single-use vote nonce (§4 anti-replay).
+router.post("/governance/proposals/:id/approve", requireStepUp, ctrl.approveProposal);
+router.post("/governance/proposals/:id/execute", requireStepUp, ctrl.executeProposal);
+
+export default router;

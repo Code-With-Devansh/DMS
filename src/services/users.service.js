@@ -1,4 +1,18 @@
+import { randomBytes } from "node:crypto";
+import argon2 from "argon2";
+import { eq } from "drizzle-orm";
 
+import { db } from "../db/index.js";
+import { users } from "../db/schema/users.js";
+import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
+import { conflict, forbidden, notFound } from "../lib/errors.js";
+import userRepository from "../repositories/user.repository.js";
+import refreshTokenRepository from "../repositories/refresh-token.repository.js";
+
+// Roles whose membership is governed by admin pools + quorum (GOVERNANCE.md),
+// never minted by a single admin through the user-CRUD path. Provisioning or
+// promoting into any of these must go through a /governance proposal.
+const ADMIN_TIER_ROLES = new Set(["SYSTEM_ADMIN", "SECURITY_ADMIN", "ORG_ADMIN"]);
 
 function publicUser(user) {
     const {hashedPassword, mfaSecret, mfaTempSecret, backupCodes, username, ...safeUser} = user;
@@ -17,8 +31,13 @@ export async function listUsers(actor, filters) {
     return {...result, items: result.items.map(publicUser)};
 }
 
-export async function provisionUser(actor, data) {
+export async function provisionUser(actor, data, ip) {
     assertOrgScope(actor, data.org);
+    // Closes the core governance hole: a single admin can no longer unilaterally
+    // create another privileged identity. Admin-tier appointments are quorum-gated.
+    if (ADMIN_TIER_ROLES.has(data.role)) {
+        throw forbidden("admin-tier users must be provisioned via /governance proposals");
+    }
     if (await userRepository.findByEmail(data.email)) throw conflict("A user with this email already exists");
 
     const baseUsername = data.email.split("@")[0].replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 40) || "user";
@@ -26,12 +45,27 @@ export async function provisionUser(actor, data) {
     for (let suffix = 1; await userRepository.findByUsername(username); suffix += 1) username = `${baseUsername}-${suffix}`;
 
     const activationToken = randomBytes(32).toString("hex");
-    const user = await userRepository.create({
-        ...data,
-        username,
-        hashedPassword: await argon2.hash(randomBytes(32).toString("base64url")),
-        status: "ACTIVE",
+    const hashedPassword = await argon2.hash(randomBytes(32).toString("base64url"));
+
+    // Insert + audit atomically: no user row without its USER_PROVISIONED entry.
+    const user = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(users).values({
+            ...data,
+            username,
+            hashedPassword,
+            status: "ACTIVE",
+        }).returning();
+        await recordAudit(tx, {
+            actorId: actor.id,
+            action: AuditAction.USER_PROVISIONED,
+            targetType: TargetType.USER,
+            targetId: created.id,
+            ip,
+            details: { role: created.role, org: created.org, email: created.email },
+        });
+        return created;
     });
+
     return {user: publicUser(user), activationToken};
 }
 
@@ -42,28 +76,77 @@ export async function getUser(actor, userId) {
     return publicUser(user);
 }
 
-export async function updateUser(actor, userId, data) {
+export async function updateUser(actor, userId, data, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
     assertOrgScope(actor, current.org);
-    const updated = await userRepository.update(userId, data);
+    // A role change may never move a user *into* an admin tier through this path;
+    // that is an appointment and must be a quorum-approved governance proposal.
+    if (data.role && ADMIN_TIER_ROLES.has(data.role)) {
+        throw forbidden("promoting a user into an admin tier must go through /governance proposals");
+    }
+
+    const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(users).set(data).where(eq(users.id, userId)).returning();
+        await recordAudit(tx, {
+            actorId: actor.id,
+            action: AuditAction.USER_UPDATED,
+            targetType: TargetType.USER,
+            targetId: userId,
+            ip,
+            details: { changed: data },
+        });
+        return row;
+    });
+
     return publicUser(updated);
 }
 
-export async function deactivateUser(actor, userId) {
+export async function deactivateUser(actor, userId, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
     assertOrgScope(actor, current.org);
-    const updated = await userRepository.update(userId, {status: "DISABLED"});
+
+    const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(users).set({status: "DISABLED"}).where(eq(users.id, userId)).returning();
+        await recordAudit(tx, {
+            actorId: actor.id,
+            action: AuditAction.USER_DEACTIVATED,
+            targetType: TargetType.USER,
+            targetId: userId,
+            ip,
+            details: { previousStatus: current.status },
+        });
+        return row;
+    });
+
+    // Kill live sessions after the deactivation commits. Deliberately outside the
+    // audit transaction: revokeAllForUser also writes revocation tombstones to Redis.
     await refreshTokenRepository.revokeAllForUser(userId);
     return publicUser(updated);
 }
 
-export async function resetMfa(actor, userId) {
+export async function resetMfa(actor, userId, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
     assertOrgScope(actor, current.org);
-    await userRepository.resetMfa(userId);
+
+    await db.transaction(async (tx) => {
+        await tx.update(users).set({
+            mfaEnrolled: false,
+            mfaSecret: null,
+            mfaTempSecret: null,
+            backupCodes: null,
+        }).where(eq(users.id, userId));
+        await recordAudit(tx, {
+            actorId: actor.id,
+            action: AuditAction.USER_MFA_RESET,
+            targetType: TargetType.USER,
+            targetId: userId,
+            ip,
+        });
+    });
+
     await refreshTokenRepository.revokeAllForUser(userId);
 }
 

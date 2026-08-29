@@ -44,6 +44,10 @@ export function requireStepUp(req, res, next) {
   try {
     const payload = verifyStepUpToken(token);
     if (payload.sub !== req.user?.id) return next(stepUpRequired());
+    // Expose the token identity to governance handlers: jti is persisted as a
+    // one-time vote nonce (unique per approval), sub is the freshly-authenticated
+    // actor. Older tokens simply lack jti (short TTL — they age out quickly).
+    req.stepUp = { jti: payload.jti, sub: payload.sub };
     return next();
   } catch {
     return next(stepUpRequired("Step-up authentication is invalid or expired"));

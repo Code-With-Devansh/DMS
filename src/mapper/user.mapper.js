@@ -8,10 +8,12 @@ const PERMISSIONS_BY_ROLE = {
     COURT_CLERK: ["case:read", "document:read", "document:write"],
     FORENSIC_ANALYST: ["document:read", "document:write"],
     RECORDS_ADMIN: ["document:read", "document:write", "user:read"],
-    SECURITY_ADMIN: ["document:read", "audit:read", "user:manage"],
-    ORG_ADMIN: ["user:manage", "case:manage", "document:manage"],
+    SECURITY_ADMIN: ["document:read", "audit:read", "user:manage", "governance:read", "governance:propose", "governance:approve"],
+    ORG_ADMIN: ["user:manage", "case:manage", "document:manage", "governance:read", "governance:propose", "governance:approve"],
     SYSTEM_ADMIN: ["*"],
-    AUDITOR: ["audit:read", "document:read", "case:read"],
+    // governance:vote is reserved for the deferred Tier-2 Auditor quorum and is
+    // kept SEPARATE from audit:read — it never grants approve/execute authority.
+    AUDITOR: ["audit:read", "document:read", "case:read", "governance:read", "governance:vote"],
 };
 
 

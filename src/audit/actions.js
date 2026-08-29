@@ -18,10 +18,28 @@ export const AuditAction = Object.freeze({
   DOCUMENT_SEALED: "DOCUMENT_SEALED",
   // Wired once the corresponding endpoint lands:
   DOCUMENT_DELETED: "DOCUMENT_DELETED",
+
+  // ---- Governance / admin-hierarchy subsystem (GOVERNANCE.md) ----
+  // Sudo proposal lifecycle: filed -> each approval/objection -> executed.
+  // SUDO_APPROVED/SUDO_OBJECTED carry the approver's pool role in details.
+  SUDO_PROPOSAL_FILED: "SUDO_PROPOSAL_FILED",
+  SUDO_APPROVED: "SUDO_APPROVED",
+  SUDO_OBJECTED: "SUDO_OBJECTED",
+  SUDO_EXECUTED: "SUDO_EXECUTED",
+  // The genesis (bootstrap) audit entry — seq #0 of the governance chain.
+  GENESIS_WRITTEN: "GENESIS_WRITTEN",
+  // Tier-1 user-mutation audit (provision / update / deactivate / MFA reset).
+  USER_PROVISIONED: "USER_PROVISIONED",
+  USER_UPDATED: "USER_UPDATED",
+  USER_DEACTIVATED: "USER_DEACTIVATED",
+  USER_MFA_RESET: "USER_MFA_RESET",
 });
 
 export const TargetType = Object.freeze({
   DOCUMENT: "DOCUMENT",
   VERSION: "VERSION",
   CASE: "CASE",
+  GOVERNANCE_PROPOSAL: "GOVERNANCE_PROPOSAL",
+  ADMIN_POOL: "ADMIN_POOL",
+  USER: "USER",
 });

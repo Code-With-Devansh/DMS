@@ -1,6 +1,7 @@
 import argon2 from "argon2";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
+import { randomUUID } from "node:crypto";
 import { toMe } from "../mapper/user.mapper.js";
 import { generateBackupCodes } from "../utils/generateBackupCodes.js";
 import { badRequest, forbidden, invalidCredentials, notFound, unauthenticated, } from "../lib/errors.js";
@@ -146,7 +147,10 @@ export async function createStepUpToken(userId, code) {
     });
     if (!verified) throw unauthenticated("Invalid MFA code");
 
-    const stepUpToken = signStepUpToken({ sub: user.id });
+    // jti makes each step-up token single-use as a governance vote: the
+    // governance approve path persists it under a UNIQUE constraint, so replaying
+    // the same token (even against a different proposal) is rejected as a conflict.
+    const stepUpToken = signStepUpToken({ sub: user.id, jti: randomUUID() });
     const payload = verifyStepUpToken(stepUpToken);
     return {
         stepUpToken,

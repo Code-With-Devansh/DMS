@@ -138,4 +138,20 @@ export default {
       signKeyPath: process.env.FABRIC_SIGN_KEY,
     },
   },
+  governance: {
+    // Master switch for the admin-hierarchy / quorum subsystem (GOVERNANCE.md).
+    // When false the governance routes still mount but the service refuses to
+    // file/approve/execute (for environments not yet bootstrapped).
+    enabled: (process.env.GOVERNANCE_ENABLED || "true") !== "false",
+    // sha256 hex of the founding secret. The one-time bootstrap ceremony is gated
+    // on sha256(providedSecret) === this value (plus the empty-admin_pools
+    // precondition). Never store the secret itself — only this commitment.
+    genesisCommitment: process.env.GOVERNANCE_GENESIS_COMMITMENT || "",
+    // Reserved for the deferred Tier-2 reinstatement window (48–72h). Core
+    // proposals execute with no delay (executesAfter = null).
+    defaultDelayHours: Number(process.env.GOVERNANCE_DELAY_HOURS) || 72,
+    // How many objections halt a PENDING proposal. Default 1 (a single objection
+    // stops it) per GOVERNANCE.md's fail-safe stance.
+    minObjectorsToHalt: Number(process.env.GOVERNANCE_MIN_OBJECTORS) || 1,
+  },
 };

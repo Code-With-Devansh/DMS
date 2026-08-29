@@ -11,6 +11,8 @@ import { forbidden } from "./errors.js";
 import userRepository from "../repositories/user.repository.js";
 import caseRepository from "../repositories/case.repository.js";
 import { getDocumentById } from "../repositories/documents.repo.js";
+import { db } from "../db/index.js";
+import * as pools from "../governance/pools.js";
 
 const clearanceRank = {
   PUBLIC: 0,
@@ -39,6 +41,13 @@ const permissionAliases = {
   "document:sign": ["document:sign", "documents:sign"],
   "document:seal": ["document:seal", "document:manage", "documents:manage"],
   "document:delete": ["document:delete", "document:manage", "documents:manage"],
+  // Governance (admin-hierarchy) coarse RBAC gate. The authoritative authority
+  // check is pool membership (see requirePoolMembership + proposals.service).
+  // governance:vote is intentionally distinct from governance:approve.
+  "governance:read": ["governance:read"],
+  "governance:propose": ["governance:propose"],
+  "governance:approve": ["governance:approve"],
+  "governance:vote": ["governance:vote"],
 };
 
 function hasPermission(permissions, action) {
@@ -90,5 +99,22 @@ export async function authorize({ user, action, resource = {} }) {
     }
   }
 
+  return true;
+}
+
+// Coarse governance gate: assert an ACTIVE user is a member of a specific admin
+// pool. Re-loads the user from the DB (never trusts the token) and checks
+// admin_pool_members. The fine-grained per-action eligibility (in-pool vs.
+// cross-tier co-sign) and quorum are still re-checked inside proposals.service —
+// this is the reusable "is this actor even in the pool" primitive.
+export async function requirePoolMembership(userId, poolType, org = null) {
+  if (!userId) throw forbidden("authenticated user is required");
+  const currentUser = await userRepository.findById(userId);
+  if (!currentUser || currentUser.status !== "ACTIVE") {
+    throw forbidden("user is not active");
+  }
+  if (!(await pools.isMember(db, userId, poolType, org))) {
+    throw forbidden(`user is not a member of the ${poolType} pool`);
+  }
   return true;
 }
