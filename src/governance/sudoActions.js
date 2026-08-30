@@ -11,10 +11,17 @@
 // what constitutes quorum, and how to execute. Adding or altering an action is a
 // single-place change.
 //
-// Only the three foundational actions are `supported` in this pass. The rest are
-// registered (so the enum + audit vocabulary and the payload contract are stable)
-// but rejected at file time with badRequest("action not yet supported") until
-// their pass lands — no destructive migration needed to turn them on later.
+// Extended entry shape (all optional except targetPool/validatePayload):
+//   - crossTier: poolType | ((payload) => poolType | null) — the co-signing pool.
+//       A function lets it depend on payload (POOL_REINSTATEMENT: no Security
+//       co-sign when the Security pool is itself the casualty).
+//   - crossTierQuorum: boolean — if true the cross-tier pool must reach its OWN k
+//       (k-of-N acknowledgement, CHANGE_ABAC_POLICY); else ≥1 co-sign suffices.
+//   - auditorQuorum: boolean — if true, also require k-of-P AUDITOR_VOTE from
+//       active AUDITOR-role users (Tier-2 POOL_REINSTATEMENT).
+
+import config from "../config/index.js";
+import { POLICY_KEYS } from "../lib/abacPolicy.js";
 
 function requireFields(payload, fields) {
   for (const f of fields) {
@@ -22,6 +29,32 @@ function requireFields(payload, fields) {
     if (v === undefined || v === null || v === "") {
       throw new Error(`payload.${f} is required`);
     }
+  }
+}
+
+// Shape guard for a CHANGE_ABAC_POLICY override document. Only the four known
+// top-level keys are allowed (unknown keys ⇒ reject, not silently ignore), and
+// each must carry the expected container type. The VALUES are trusted structurally
+// (they're merged verbatim) — this is a shape gate, not a semantic validator.
+function validateAbacPolicy(policy) {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    throw new Error("payload.policy must be an object");
+  }
+  const keys = Object.keys(policy);
+  if (keys.length === 0) throw new Error("payload.policy must not be empty");
+  for (const k of keys) {
+    if (!POLICY_KEYS.includes(k)) {
+      throw new Error(`payload.policy has unknown key '${k}'`);
+    }
+  }
+  const objectKeys = ["clearanceRank", "permissionAliases", "permissionsByRole"];
+  for (const k of objectKeys) {
+    if (policy[k] !== undefined && (typeof policy[k] !== "object" || Array.isArray(policy[k]))) {
+      throw new Error(`payload.policy.${k} must be an object`);
+    }
+  }
+  if (policy.elevatedCaseRoles !== undefined && !Array.isArray(policy.elevatedCaseRoles)) {
+    throw new Error("payload.policy.elevatedCaseRoles must be an array");
   }
 }
 
@@ -58,14 +91,107 @@ export const SUDO_ACTIONS = Object.freeze({
     },
   },
 
-  // ── deferred: registered so the vocabulary is stable, not yet executable ──
-  APPOINT_SYSTEM_ADMIN: { supported: false },
-  REMOVE_SYSTEM_ADMIN: { supported: false },
-  ONBOARD_ORG: { supported: false },
-  CHANGE_ABAC_POLICY: { supported: false },
-  POOL_REINSTATEMENT: { supported: false },
+  // ── System-Admin tier (governing pool = the SYSTEM_ADMIN pool, org null;
+  //    cross-tier co-sign = a Security Admin) ──────────────────────────────────
+  // Appoint a user into the top-tier SYSTEM_ADMIN pool. Mirrors APPOINT_ORG_ADMIN
+  // one tier up.
+  APPOINT_SYSTEM_ADMIN: {
+    supported: true,
+    crossTier: "SECURITY_ADMIN",
+    delayHours: 0,
+    targetPool: () => ({ poolType: "SYSTEM_ADMIN", org: null }),
+    validatePayload: (p) => requireFields(p, ["userId"]),
+  },
+
+  // Remove a user from the SYSTEM_ADMIN pool. Last-admin/quorum-floor removal is
+  // blocked in the execute branch; total top-tier loss is the GENESIS_REPLACEMENT
+  // recovery path, not this action.
+  REMOVE_SYSTEM_ADMIN: {
+    supported: true,
+    crossTier: "SECURITY_ADMIN",
+    delayHours: 0,
+    targetPool: () => ({ poolType: "SYSTEM_ADMIN", org: null }),
+    validatePayload: (p) => requireFields(p, ["userId"]),
+  },
+
+  // Stand up a new org's ORG_ADMIN pool. Governed by the SYSTEM_ADMIN pool (only
+  // the top tier onboards orgs); Security Admin co-signs. The new pool + its
+  // members are created in the execute branch (it does not exist at file time).
+  ONBOARD_ORG: {
+    supported: true,
+    crossTier: "SECURITY_ADMIN",
+    delayHours: 0,
+    targetPool: () => ({ poolType: "SYSTEM_ADMIN", org: null }),
+    validatePayload: (p) => {
+      requireFields(p, ["org", "members"]);
+      if (!Array.isArray(p.members) || p.members.length < 1) {
+        throw new Error("payload.members must be a non-empty array");
+      }
+      if (p.k !== undefined && p.k !== null && !Number.isInteger(p.k)) {
+        throw new Error("payload.k must be an integer");
+      }
+    },
+  },
+
+  // ── Inverted quorum: Security Admin is PRIMARY, System Admins acknowledge
+  //    (GOVERNANCE.md §9.2). Governing pool = SECURITY_ADMIN; cross-tier =
+  //    SYSTEM_ADMIN and must reach its OWN k (k-of-N acknowledgement). ──────────
+  CHANGE_ABAC_POLICY: {
+    supported: true,
+    crossTier: "SYSTEM_ADMIN",
+    crossTierQuorum: true,
+    delayHours: 0,
+    targetPool: () => ({ poolType: "SECURITY_ADMIN", org: null }),
+    validatePayload: (p) => {
+      requireFields(p, ["policy"]);
+      validateAbacPolicy(p.policy);
+    },
+  },
+
+  // ── Tier-2 recovery: reinstate a pool that fell below its own quorum. Governed
+  //    by the SYSTEM_ADMIN pool (escalated one level up) + k-of-P Auditor votes.
+  //    Cross-tier Security co-sign only when the AFFECTED pool is ORG_ADMIN — when
+  //    reinstating the SECURITY_ADMIN pool that pool may itself be the casualty,
+  //    so its co-sign cannot be required (System + Auditor quorums carry it). ────
+  POOL_REINSTATEMENT: {
+    supported: true,
+    crossTier: (p) => (p.poolType === "ORG_ADMIN" ? "SECURITY_ADMIN" : null),
+    auditorQuorum: true,
+    delayHours: config.governance.defaultDelayHours,
+    targetPool: () => ({ poolType: "SYSTEM_ADMIN", org: null }),
+    validatePayload: (p) => {
+      requireFields(p, ["poolType", "members"]);
+      if (p.poolType === "SYSTEM_ADMIN") {
+        throw new Error("SYSTEM_ADMIN reinstatement uses GENESIS_REPLACEMENT");
+      }
+      if (!["ORG_ADMIN", "SECURITY_ADMIN"].includes(p.poolType)) {
+        throw new Error("payload.poolType must be ORG_ADMIN or SECURITY_ADMIN");
+      }
+      if (p.poolType === "ORG_ADMIN") requireFields(p, ["org"]);
+      if (!Array.isArray(p.members) || p.members.length < 1) {
+        throw new Error("payload.members must be a non-empty array");
+      }
+      if (p.k !== undefined && p.k !== null && !Number.isInteger(p.k)) {
+        throw new Error("payload.k must be an integer");
+      }
+    },
+  },
+
+  // ── Tier-3: entire top tier locked out. NOT a proposal (no healthy pool remains
+  //    to vote) — handled by the share-authorized regenesis ceremony (bootstrap
+  //    sibling). Kept unsupported so it can never be filed as a normal proposal. ─
   GENESIS_REPLACEMENT: { supported: false },
 });
+
+// Resolve the effective cross-tier pool spec for an action+payload, or null when
+// the action has no cross-tier requirement (or the fn returned null). Both
+// classifyApprover and executeProposal call this so they agree on the co-signer.
+export function resolveCrossTier(action, payload) {
+  const ct = action?.crossTier;
+  const poolType = typeof ct === "function" ? ct(payload ?? {}) : ct;
+  if (!poolType) return null;
+  return { poolType, org: null };
+}
 
 // Registry lookup; null for an unknown actionType (the zod enum already rejects
 // values outside sudo_action_type, so null here means "known enum, no entry").

@@ -35,6 +35,13 @@ const payloadSchema = z.object({
   userId: uuidLike.optional(),
   poolType: poolTypeEnum.optional(),
   k: z.number().int().optional(),
+  // m + members carry the roster for ONBOARD_ORG / POOL_REINSTATEMENT.
+  m: z.number().int().optional(),
+  members: z.array(uuidLike).min(1).optional(),
+  // policy is the CHANGE_ABAC_POLICY override document. It must survive key
+  // stripping (its inner shape is arbitrary), so it is a passthrough record; the
+  // top-level-key + type guard lives in the registry validatePayload.
+  policy: z.record(z.string(), z.any()).optional(),
 });
 
 export const fileProposalSchema = z.object({
@@ -85,4 +92,13 @@ export const bootstrapSchema = z.object({
   roster: z.array(rosterEntrySchema).min(1),
   pools: z.array(poolSpecSchema).min(1),
   shares: z.array(shareSchema).optional(),
+});
+
+// ── regenesis (Tier-3 re-ceremony) ────────────────────────────────────────────
+// Same roster/pool shape as bootstrap but no shares (share metadata is untouched)
+// and pools are constrained to the two org-less top-tier types in the service.
+export const regenesisSchema = z.object({
+  secret: z.string().min(1),
+  roster: z.array(rosterEntrySchema).min(1),
+  pools: z.array(poolSpecSchema).min(1),
 });

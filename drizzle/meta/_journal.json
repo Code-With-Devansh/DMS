@@ -78,6 +78,13 @@
 			"when": 1787714405400,
 			"tag": "0010_governance",
 			"breakpoints": true
+		},
+		{
+			"idx": 11,
+			"version": "7",
+			"when": 1787800000500,
+			"tag": "0011_abac_policies",
+			"breakpoints": true
 		}
 	]
 }

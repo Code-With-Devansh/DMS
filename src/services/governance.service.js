@@ -12,4 +12,4 @@ export {
   getProposal,
 } from "../governance/proposals.service.js";
 
-export { bootstrap } from "../governance/bootstrap.js";
+export { bootstrap, regenesis } from "../governance/bootstrap.js";

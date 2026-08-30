@@ -13,44 +13,14 @@ import caseRepository from "../repositories/case.repository.js";
 import { getDocumentById } from "../repositories/documents.repo.js";
 import { db } from "../db/index.js";
 import * as pools from "../governance/pools.js";
+import { getActivePolicy } from "./abacPolicy.js";
 
-const clearanceRank = {
-  PUBLIC: 0,
-  RESTRICTED: 1,
-  CONFIDENTIAL: 2,
-  SECRET: 3,
-};
+// clearanceRank / elevatedCaseRoles / permissionAliases used to be module-level
+// constants here. They now live in src/lib/abacPolicy.js (DEFAULT_POLICY) and are
+// resolved per request via getActivePolicy(), which layers any active
+// CHANGE_ABAC_POLICY override on top. With no override the values are identical.
 
-const elevatedCaseRoles = new Set(["SUPERVISOR", "ORG_ADMIN", "SYSTEM_ADMIN"]);
-
-const permissionAliases = {
-  "user:read": ["user:read", "user:manage"],
-  "user:manage": ["user:manage"],
-  "case:list": ["case:list", "case:read", "cases:read"],
-  "case:read": ["case:read", "cases:read"],
-  "case:create": ["case:create", "case:manage", "cases:manage"],
-  "case:update": ["case:update", "case:manage", "cases:manage"],
-  "case:manage": ["case:manage", "cases:manage"],
-  "case:legal-hold": ["case:legal-hold", "case:manage", "cases:manage"],
-  "document:read": ["document:read", "documents:read"],
-  "document:list": ["document:list", "document:read", "documents:read"],
-  "document:download": ["document:download", "document:read", "documents:read"],
-  "document:create": ["document:create", "document:write", "documents:write"],
-  "document:add-version": ["document:add-version", "document:write", "documents:write"],
-  "document:restore": ["document:restore", "document:write", "documents:write"],
-  "document:sign": ["document:sign", "documents:sign"],
-  "document:seal": ["document:seal", "document:manage", "documents:manage"],
-  "document:delete": ["document:delete", "document:manage", "documents:manage"],
-  // Governance (admin-hierarchy) coarse RBAC gate. The authoritative authority
-  // check is pool membership (see requirePoolMembership + proposals.service).
-  // governance:vote is intentionally distinct from governance:approve.
-  "governance:read": ["governance:read"],
-  "governance:propose": ["governance:propose"],
-  "governance:approve": ["governance:approve"],
-  "governance:vote": ["governance:vote"],
-};
-
-function hasPermission(permissions, action) {
+function hasPermission(permissions, action, permissionAliases) {
   const required = permissionAliases[action] ?? [action];
   return permissions.includes("*") || required.some((permission) => permissions.includes(permission));
 }
@@ -64,14 +34,15 @@ async function resolveCase(resource = {}) {
   return null;
 }
 
-async function canAccessCase(user, caseRow) {
+async function canAccessCase(user, caseRow, policy) {
   if (!caseRow || user.jurisdiction !== caseRow.jurisdiction) return false;
+  const clearanceRank = policy.clearanceRank;
   const userClearance = clearanceRank[user.clearance];
   const caseClassification = clearanceRank[caseRow.classification];
   if (userClearance === undefined || caseClassification === undefined || userClearance < caseClassification) {
     return false;
   }
-  if (elevatedCaseRoles.has(user.role)) return true;
+  if (policy.elevatedCaseRoles.includes(user.role)) return true;
   if (caseRow.createdBy === user.id) return true;
 
   const officers = await caseRepository.listOfficers(caseRow.id);
@@ -81,20 +52,24 @@ async function canAccessCase(user, caseRow) {
 export async function authorize({ user, action, resource = {} }) {
   if (!user?.id) throw forbidden("authenticated user is required");
 
+  // Resolve the active policy first. This refreshes the shared cache, so the
+  // subsequent toMe() (which reads it synchronously) sees the same fresh policy.
+  const policy = await getActivePolicy();
+
   const currentUser = await userRepository.findById(user.id);
   if (!currentUser || currentUser.status !== "ACTIVE") {
     throw forbidden("user is not active");
   }
 
   const permissions = toMe(currentUser).permissions;
-  if (!hasPermission(permissions, action)) {
+  if (!hasPermission(permissions, action, policy.permissionAliases)) {
     throw forbidden(`user ${currentUser.id} is not permitted to perform ${action}`);
   }
 
   const isResourceAction = Boolean(resource.caseId || resource.documentId || resource.versionId);
   if (isResourceAction) {
     const caseRow = await resolveCase(resource);
-    if (!(await canAccessCase(currentUser, caseRow))) {
+    if (!(await canAccessCase(currentUser, caseRow, policy))) {
       throw forbidden("user is not permitted to access this case");
     }
   }

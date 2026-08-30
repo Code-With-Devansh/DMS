@@ -167,3 +167,94 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
     };
   });
 }
+
+// regenesis({ secret, roster, pools }, ip)  — Tier-3 recovery (GOVERNANCE.md §7.3).
+//
+// When the ENTIRE top tier is locked out (SYSTEM_ADMIN + SECURITY_ADMIN pools
+// have fallen below quorum simultaneously), no healthy pool remains to vote a
+// POOL_REINSTATEMENT, so recovery cannot be a quorum proposal. Instead a fresh
+// share-authorized ceremony — gated on the SAME constant-time genesis commitment
+// as bootstrap — SUPERSEDES the org-less top-tier pool memberships with a new
+// roster. It does NOT touch the secret, the commitment, or genesis_shares
+// metadata; those are unchanged (the commitment is what authorizes this call).
+//
+// Difference from bootstrap: bootstrap requires admin_pools EMPTY; regenesis
+// requires the top-tier pools to EXIST (you are replacing, not founding). Only
+// SYSTEM_ADMIN / SECURITY_ADMIN memberships are rewritten; ORG_ADMIN pools are
+// left intact.
+export async function regenesis({ secret, roster, pools: poolSpecs }, ip) {
+  if (!config.governance.enabled) throw forbidden("governance subsystem is disabled");
+  if (!commitmentMatches(secret)) throw forbidden("genesis secret does not match commitment");
+  if (!Array.isArray(roster) || roster.length === 0) throw badRequest("roster must be non-empty");
+  if (!Array.isArray(poolSpecs) || poolSpecs.length === 0) throw badRequest("at least one pool is required");
+
+  // Regenesis only rewrites the org-less top-tier pools.
+  for (const spec of poolSpecs) {
+    if (!["SYSTEM_ADMIN", "SECURITY_ADMIN"].includes(spec.poolType)) {
+      throw badRequest(`regenesis only replaces SYSTEM_ADMIN/SECURITY_ADMIN pools, not ${spec.poolType}`);
+    }
+    const m = Array.isArray(spec.members) ? spec.members.length : 0;
+    try {
+      validateThreshold(spec.k, m);
+    } catch (err) {
+      throw badRequest(`pool ${spec.poolType}: ${err.message}`);
+    }
+  }
+
+  return db.transaction(async (tx) => {
+    // Serialize under the same advisory lock as bootstrap.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BOOTSTRAP_LOCK_KEY})`);
+    const [{ existing }] = await tx.select({ existing: count() }).from(adminPools);
+    if (Number(existing) === 0) throw conflict("governance has not been bootstrapped; use bootstrap");
+
+    // Create/link the replacement founders.
+    const usernameTaken = new Set();
+    const byEmail = new Map();
+    for (const entry of roster) {
+      const u = await upsertRosterUser(tx, entry, usernameTaken);
+      byEmail.set(entry.email, u);
+    }
+
+    const replaced = [];
+    for (const spec of poolSpecs) {
+      const pool = await pools.getPool(tx, spec.poolType, null);
+      if (!pool) throw conflict(`${spec.poolType} pool does not exist; use bootstrap`);
+
+      // Wipe the old membership, then attach the new roster.
+      const current = await pools.listMembers(tx, pool.id);
+      const newIds = new Set();
+      for (const email of spec.members) {
+        const member = byEmail.get(email);
+        if (!member) throw badRequest(`pool member ${email} is not in the roster`);
+        newIds.add(member.id);
+      }
+      for (const row of current) {
+        if (!newIds.has(row.userId)) await pools.removeMember(tx, pool.id, row.userId);
+      }
+      const existingIds = new Set(current.map((r) => r.userId));
+      for (const id of newIds) {
+        if (!existingIds.has(id)) await pools.addMember(tx, pool.id, id);
+      }
+      const m = spec.members.length;
+      await pools.setThreshold(tx, pool.id, { k: spec.k ?? undefined, m });
+      replaced.push({ id: pool.id, poolType: pool.poolType, k: spec.k ?? m, m });
+    }
+
+    const founders = roster.map((e) => byEmail.get(e.email));
+    const genesisActor = founders.find((f) => f.role === "SYSTEM_ADMIN") || founders[0];
+
+    const entry = await recordAudit(tx, {
+      actorId: genesisActor.id,
+      action: AuditAction.GENESIS_REPLACED,
+      targetType: TargetType.ADMIN_POOL,
+      targetId: null,
+      ip,
+      details: {
+        pools: replaced.map((p) => ({ poolType: p.poolType, k: p.k, m: p.m })),
+        founders: roster.length,
+      },
+    });
+
+    return { regenesised: true, entryId: entry.id, pools: replaced, founders: founders.length };
+  });
+}

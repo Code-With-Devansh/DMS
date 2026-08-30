@@ -11,6 +11,11 @@ const router = express.Router();
 // governance route not behind requireAuth — see GOVERNANCE.md §6.4.
 router.post("/governance/bootstrap", ctrl.bootstrap);
 
+// Tier-3 recovery ceremony — also before requireAuth (whole top tier locked out,
+// no admin to authenticate as). Gated by the genesis commitment in the service,
+// mirroring bootstrap. See GOVERNANCE.md §7.3.
+router.post("/governance/regenesis", ctrl.regenesis);
+
 router.use(requireAuth);
 
 router.get("/governance/proposals", ctrl.listProposals);

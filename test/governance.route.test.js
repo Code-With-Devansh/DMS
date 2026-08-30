@@ -11,6 +11,7 @@ import { jest, beforeEach, describe, expect, it } from "@jest/globals";
 // ── governance service (facade the controller imports) ───────────────────────
 const governanceService = {
   bootstrap: jest.fn(),
+  regenesis: jest.fn(),
   fileProposal: jest.fn(),
   approveProposal: jest.fn(),
   objectProposal: jest.fn(),
@@ -124,7 +125,68 @@ describe("governance bootstrap (unauthenticated genesis route)", () => {
   });
 });
 
+describe("governance regenesis (unauthenticated Tier-3 route)", () => {
+  it("is reachable WITHOUT auth and forwards a valid payload to the service (201)", async () => {
+    governanceService.regenesis.mockResolvedValue({ regenesised: true });
+    const payload = {
+      secret: "founding-secret",
+      roster: [
+        { fullName: "Ada", email: "ada@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
+        { fullName: "Grace", email: "grace@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
+      ],
+      pools: [{ poolType: "SYSTEM_ADMIN", members: ["ada@x.example", "grace@x.example"] }],
+    };
+
+    const response = await request(app).post("/api/v1/governance/regenesis").send(payload);
+
+    expect(response.status).toBe(201);
+    expect(governanceService.regenesis).toHaveBeenCalledTimes(1);
+    const [arg] = governanceService.regenesis.mock.calls[0];
+    expect(arg.secret).toBe("founding-secret");
+    expect(arg.pools[0].poolType).toBe("SYSTEM_ADMIN");
+  });
+
+  it("rejects an empty roster with 400 VALIDATION, service untouched", async () => {
+    const response = await request(app)
+      .post("/api/v1/governance/regenesis")
+      .send({ secret: "s", roster: [], pools: [] });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION");
+    expect(governanceService.regenesis).not.toHaveBeenCalled();
+  });
+});
+
 describe("governance proposals (auth + step-up)", () => {
+  it("files a CHANGE_ABAC_POLICY proposal, forwarding the passthrough policy doc", async () => {
+    governanceService.fileProposal.mockResolvedValue({ id: "prop-abac", status: "PENDING" });
+    const policy = { permissionsByRole: { AUDITOR: ["audit:read", "governance:vote"] } };
+
+    const response = await request(app)
+      .post("/api/v1/governance/proposals")
+      .set(AUTH)
+      .send({ actionType: "CHANGE_ABAC_POLICY", payload: { policy } });
+
+    expect(response.status).toBe(201);
+    const [, body] = governanceService.fileProposal.mock.calls[0];
+    // the nested policy object survives zod (not key-stripped)
+    expect(body.payload.policy).toEqual(policy);
+  });
+
+  it("files an ONBOARD_ORG proposal, forwarding the members roster", async () => {
+    governanceService.fileProposal.mockResolvedValue({ id: "prop-onboard", status: "PENDING" });
+    const members = ["00000000-0000-0000-0000-000000000009", "00000000-0000-0000-0000-00000000000a"];
+
+    const response = await request(app)
+      .post("/api/v1/governance/proposals")
+      .set(AUTH)
+      .send({ actionType: "ONBOARD_ORG", payload: { org: "acme", members } });
+
+    expect(response.status).toBe(201);
+    const [, body] = governanceService.fileProposal.mock.calls[0];
+    expect(body.payload.members).toEqual(members);
+    expect(body.payload.org).toBe("acme");
+  });
+
   it("files a proposal, forwarding parsed (actorId, body, ip) to the service", async () => {
     governanceService.fileProposal.mockResolvedValue({ id: "prop-1", status: "PENDING" });
 

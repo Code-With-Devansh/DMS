@@ -3,6 +3,7 @@ import { authorize } from "../lib/authorize.js";
 import * as service from "../services/governance.service.js";
 import {
   bootstrapSchema,
+  regenesisSchema,
   fileProposalSchema,
   objectSchema,
   listProposalsSchema,
@@ -18,6 +19,13 @@ import {
 export async function bootstrap(req, res) {
   const body = parse(bootstrapSchema, req.body);
   res.status(201).json(await service.bootstrap(body, req.ip));
+}
+
+// Tier-3 re-ceremony. Like bootstrap, unauthenticated + commitment-gated in the
+// service (the entire top tier is locked out, so no admin can authenticate).
+export async function regenesis(req, res) {
+  const body = parse(regenesisSchema, req.body);
+  res.status(201).json(await service.regenesis(body, req.ip));
 }
 
 export async function fileProposal(req, res) {

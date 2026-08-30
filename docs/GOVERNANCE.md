@@ -213,6 +213,36 @@ genesis shares from bootstrap (§6)**:
 
 ## 8. Implementation direction (not yet built — design note for later)
 
+> **Implementation status (updated).** All nine sudo actions are now built on the
+> Postgres proposal/voting machinery (not the Fabric-endorsement alternative
+> sketched below, which remains a possible future spike). Live actions:
+> `APPOINT_ORG_ADMIN`, `REMOVE_ORG_ADMIN`, `CHANGE_POOL_THRESHOLD`,
+> `APPOINT_SYSTEM_ADMIN`, `REMOVE_SYSTEM_ADMIN`, `ONBOARD_ORG`,
+> `CHANGE_ABAC_POLICY`, `POOL_REINSTATEMENT`. Mechanics chosen:
+> - **System-admin tier + ONBOARD_ORG** are governed by the org-less
+>   `SYSTEM_ADMIN` pool with a Security-Admin cross-tier co-sign; the new/affected
+>   pool is created in the execute branch (no `fileProposal` change).
+> - **CHANGE_ABAC_POLICY** uses an inverted quorum (Security-Admin primary +
+>   k-of-N System-Admin acknowledgement) and writes an append-only, versioned
+>   `abac_policies` row (active = MAX(version)); `authorize.js` / `user.mapper.js`
+>   merge that overlay onto hardcoded defaults, so no policy row means behavior
+>   identical to before. The policy cache is invalidated only after the tx commits.
+> - **POOL_REINSTATEMENT** (Tier-2) is governed by the `SYSTEM_ADMIN` pool + a
+>   k-of-P Auditor quorum sourced from active `users.role = 'AUDITOR'` (P=0 means
+>   fail-closed), with the 72h `defaultDelayHours` window enforced. A Security-Admin
+>   co-sign is required only when the affected pool is `ORG_ADMIN`. It rejects
+>   `poolType = SYSTEM_ADMIN`, which is the Tier-3 path.
+> - **GENESIS_REPLACEMENT** (Tier-3) is deliberately not a proposal. It is a
+>   share-authorized re-ceremony (`POST /governance/regenesis`, a bootstrap sibling
+>   gated on the same constant-time genesis commitment) that supersedes the
+>   top-tier pool memberships. It never touches the secret, commitment, or
+>   genesis-share metadata, and never accepts the secret on argv. Its registry entry
+>   stays `{supported:false}` so it can never be filed as a normal proposal.
+>
+> Deferred enhancement: the Tier-2 BullMQ notification/broadcast worker (the audit
+> log already records every step).
+
+
 The quorum-voting model described here (§3–§7) maps closely onto **Hyperledger
 Fabric endorsement policies**, which `DESIGN.md` §3 already commits to for
 document integrity. Rather than building a bespoke Postgres proposal/voting

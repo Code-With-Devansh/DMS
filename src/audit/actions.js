@@ -33,6 +33,10 @@ export const AuditAction = Object.freeze({
   USER_UPDATED: "USER_UPDATED",
   USER_DEACTIVATED: "USER_DEACTIVATED",
   USER_MFA_RESET: "USER_MFA_RESET",
+  // CHANGE_ABAC_POLICY execute: a new abac_policies version was appended.
+  ABAC_POLICY_CHANGED: "ABAC_POLICY_CHANGED",
+  // GENESIS_REPLACEMENT (Tier-3 re-ceremony): the top-tier rosters were replaced.
+  GENESIS_REPLACED: "GENESIS_REPLACED",
 });
 
 export const TargetType = Object.freeze({
@@ -42,4 +46,5 @@ export const TargetType = Object.freeze({
   GOVERNANCE_PROPOSAL: "GOVERNANCE_PROPOSAL",
   ADMIN_POOL: "ADMIN_POOL",
   USER: "USER",
+  ABAC_POLICY: "ABAC_POLICY",
 });
