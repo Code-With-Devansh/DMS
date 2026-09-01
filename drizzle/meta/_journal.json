@@ -85,6 +85,13 @@
 			"when": 1787800000500,
 			"tag": "0011_abac_policies",
 			"breakpoints": true
+		},
+		{
+			"idx": 12,
+			"version": "7",
+			"when": 1787900000000,
+			"tag": "0012_reference_tables",
+			"breakpoints": true
 		}
 	]
 }

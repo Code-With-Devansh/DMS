@@ -7,6 +7,7 @@ import auditRouter from "./routes/audit.route.js";
 import caseRouter from "./routes/cases.route.js";
 import usersRouter from "./routes/users.route.js";
 import governanceRouter from "./routes/governance.route.js";
+import referenceRouter from "./routes/reference.route.js";
 
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
@@ -33,6 +34,7 @@ app.use("/api/v1", documentsRouter);
 app.use("/api/v1", auditRouter);
 app.use("/api/v1", usersRouter);
 app.use("/api/v1", governanceRouter);
+app.use("/api/v1", referenceRouter);
 
 // Liveness + storage reachability (handy for a compose healthcheck).
 app.get("/health/storage", async (req, res) => {

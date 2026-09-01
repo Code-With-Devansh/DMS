@@ -52,8 +52,20 @@ export const DEFAULT_POLICY = Object.freeze({
     "document:delete": ["document:delete", "document:manage", "documents:manage"],
     "governance:read": ["governance:read"],
     "governance:propose": ["governance:propose"],
-    "governance:approve": ["governance:approve"],
+    // AUDITOR only holds "governance:vote" (never a raw "governance:approve"),
+    // but approve/object/execute are all gated on the "governance:approve"
+    // action. Without this alias, auditors 403 here before ever reaching
+    // proposals.service's classifyApprover — which is the actual, fail-closed
+    // check for whether they're eligible on THIS proposal (AUDITOR_VOTE only
+    // applies when action.auditorQuorum is set, e.g. POOL_REINSTATEMENT).
+    "governance:approve": ["governance:approve", "governance:vote"],
     "governance:vote": ["governance:vote"],
+    // orgs/jurisdictions reference-data CRUD (SYSTEM_ADMIN / SECURITY_ADMIN
+    // only — see src/controllers/reference.controller.js). Deliberately a
+    // plain RBAC gate, not a sudo/quorum action: unlike CHANGE_ABAC_POLICY,
+    // this is reference-data maintenance, not a change to who holds power.
+    "reference:read": ["reference:read", "reference:manage"],
+    "reference:manage": ["reference:manage"],
   },
   permissionsByRole: {
     INVESTIGATING_OFFICER: ["case:read", "document:read", "document:write"],
@@ -63,7 +75,7 @@ export const DEFAULT_POLICY = Object.freeze({
     COURT_CLERK: ["case:read", "document:read", "document:write"],
     FORENSIC_ANALYST: ["document:read", "document:write"],
     RECORDS_ADMIN: ["document:read", "document:write", "user:read"],
-    SECURITY_ADMIN: ["document:read", "audit:read", "user:manage", "governance:read", "governance:propose", "governance:approve"],
+    SECURITY_ADMIN: ["document:read", "audit:read", "user:manage", "governance:read", "governance:propose", "governance:approve", "reference:manage"],
     ORG_ADMIN: ["user:manage", "case:manage", "document:manage", "governance:read", "governance:propose", "governance:approve"],
     SYSTEM_ADMIN: ["*"],
     AUDITOR: ["audit:read", "document:read", "case:read", "governance:read", "governance:vote"],
