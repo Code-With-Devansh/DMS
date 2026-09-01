@@ -27,7 +27,7 @@ app.get('/', (req, res) => {
   res.send('Hello World!');
 });
 // unauthenticated keep it at the top.
-app.use("/api/v1", governanceRouter);
+app.use("/api/v1/governance", governanceRouter);
 
 app.use("/api/v1", authRouter);
 app.use("/api/v1/cases", requireAuth, caseRouter);
