@@ -37,7 +37,30 @@ export async function login({ username, password }) {
     return { mfaRequired: false, mfaToken };
 }
 
-export async function changePassword({ activationToken, newPassword }) {
+export async function changePassword( userId, { oldPassword, newPassword }) {
+    if(oldPassword === newPassword) {
+        throw badRequest("New password cannot be the same as the old password.");
+    }
+
+    const user = await userRepository.findActiveById(userId);
+    if (!user) {
+        throw notFound("User not found.");
+    }
+
+    const passwordValid = await argon2.verify(user.hashedPassword, oldPassword);
+
+    if (!passwordValid) {
+        throw invalidCredentials("Old password is incorrect.");
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+
+    await userRepository.setPasswordHash(userId, passwordHash);
+
+}
+
+
+export async function activateAccount({ activationToken, newPassword }) {
     const activationTokenFromDB = await activationTokenRepo.findByToken(hashActivationToken(activationToken));
     if(!activationTokenFromDB) {
         throw badRequest("Invalid activation token.");

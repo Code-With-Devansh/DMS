@@ -13,6 +13,7 @@ import { activation_tokens } from "../db/schema/index.js";
 import { hashActivationToken } from "../utils/hashActivationToken.js"
 
 
+
 // Roles whose membership is governed by admin pools + quorum (GOVERNANCE.md),
 // never minted by a single admin through the user-CRUD path. Provisioning or
 // promoting into any of these must go through a /governance proposal.
