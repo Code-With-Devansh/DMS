@@ -6,4 +6,5 @@ export * from "./cases.js";
 export * from "./audit.js";
 export * from "./governance.js";
 export * from "./abac.js";
+export * from "./activation_tokens.js";
 export * from "./reference.js";

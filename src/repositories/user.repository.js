@@ -94,7 +94,6 @@ class UserRepository {
             }).where(eq(users.id, userId));
 
             const existingToken = await tx.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);
-            console.log(existingToken);
             if(existingToken.length > 0) {
                 await tx.update(refreshTokens).set({ tokenHash: hashRefreshToken(refreshToken),revokedAt: null,expiresAt: new Date(expiresAt)
         })
@@ -115,7 +114,6 @@ class UserRepository {
         return db.transaction(async (tx) => {
             await tx.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
             const existingToken = await tx.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);
-            console.log(existingToken);
             if (existingToken.length > 0) {
                 await tx.update(refreshTokens)
                     .set({
