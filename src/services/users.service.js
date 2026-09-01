@@ -10,7 +10,7 @@ import userRepository from "../repositories/user.repository.js";
 import refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as activationTokenRepo from "../repositories/activation-token.repository.js";
 import { activation_tokens } from "../db/schema/index.js";
-import { hashActivationToken } from "../utils/hashActivationToken.js"
+import { hashActivationToken, hashAccessToken } from "../utils/hashToken.js"
 
 
 

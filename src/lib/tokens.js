@@ -72,3 +72,8 @@ export function getRefreshExpiryTime(token) {
   const decoded = verifyRefreshToken(token);
   return decoded.exp;
 }
+
+export function getAccessExpiryTime(token) {
+  const decoded = verifyAccessToken(token);
+  return decoded.exp;
+}

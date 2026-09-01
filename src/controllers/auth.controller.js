@@ -10,17 +10,14 @@ import {
 
 import { notFound, badRequest } from "../lib/errors.js";
 import redisClient from "../config/redis.js";
-import { hashRefreshToken } from "../utils/hashRefreshToken.js";
-import { getUserIdFromMfaToken, getUserIdFromRefreshToken } from "../lib/tokens.js";
+import { hashRefreshToken, hashAccessToken } from "../utils/hashToken.js";
+import { getAccessExpiryTime, getUserIdFromMfaToken, getUserIdFromRefreshToken } from "../lib/tokens.js";
 
 
 // POST /login — verify credentials, then stash a short-lived MFA token in a
 // cookie
 export async function login(req, res) {
     const loginData = parse(loginSchema, req.body);
-    if (!loginData.username || !loginData.password) {
-        throw badRequest("Username and password are required");
-    }
     const { mfaRequired, mfaToken } = await service.login(loginData);
     setMfaCookie(res, mfaToken);
     clearAuthCookies(res);
@@ -83,7 +80,7 @@ export async function verifyMfaEnrollment(req, res) {
     clearMfaCookie(res);
     setRefreshCookie(res, refreshToken);
     redisClient.set(`${hashRefreshToken(refreshToken)}`, "active");
-    redisClient.set(`${accessToken}`, "active");
+    redisClient.set(`${hashAccessToken(accessToken)}`, "active");
 
     return res.status(200).json({ backUpCodes: backupCodes, user, accessToken });
 }
@@ -117,6 +114,8 @@ export async function stepUp(req, res) {
 // POST /refresh — mint a new access token from the refresh cookie.
 export async function refresh(req, res) {
     const prevAccessToken = req.headers.authorization?.split(' ')[1];
+
+
     const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
     if (!refreshToken) {
         throw notFound("Refresh token not found in request cookies");
@@ -145,6 +144,7 @@ export async function refresh(req, res) {
 
     const { accessToken, newRefreshToken } = await service.refresh(userId, prevAccessToken, refreshToken);
     setRefreshCookie(res, newRefreshToken);
+
     return res.status(200).json({ message: "Access token refreshed", accessToken });
 }
 
@@ -153,18 +153,22 @@ export async function logout(req, res) {
     const accessToken = req.headers.authorization?.split(" ")[1];
     const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
 
+
+    
     if (accessToken) {
-        await redisClient.set(`${accessToken}`, "revoked", {
-            EX: 15 * 60 * 60,
+        await redisClient.set(`${hashAccessToken(accessToken)}`, "revoked", {
+            "EX": Math.round((getAccessExpiryTime(accessToken) - Date.now() / 1000)),
         });
     }
-
+    
     if (refreshToken) {
         const userId = getUserIdFromRefreshToken(refreshToken);
+        console.log(userId)
         if (!userId) {
             throw notFound("Refresh token is required");
         }
-        await service.logout(userId, accessToken);
+        await service.logout(userId, refreshToken);
+        console.log("Revoked refresh token for user:", userId, accessToken);
     }
 
     clearAuthCookies(res);
