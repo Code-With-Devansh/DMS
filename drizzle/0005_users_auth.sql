@@ -28,7 +28,7 @@ CREATE TYPE "public"."status" AS ENUM(
 END IF;
 END $$;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
                        username TEXT NOT NULL,
@@ -53,18 +53,18 @@ CREATE TABLE users (
                        last_login_at TIMESTAMPTZ
 );
 
-CREATE UNIQUE INDEX users_username_key
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_key
     ON users (username);
 
-CREATE UNIQUE INDEX users_email_key
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key
     ON users (email);
 
-CREATE INDEX users_role_idx
+CREATE INDEX IF NOT EXISTS users_role_idx
     ON users (role);
 
-CREATE INDEX users_org_idx
+CREATE INDEX IF NOT EXISTS users_org_idx
     ON users (org);
 
-CREATE INDEX users_status_idx
+CREATE INDEX IF NOT EXISTS users_status_idx
     ON users (status);
 --> statement-breakpoint

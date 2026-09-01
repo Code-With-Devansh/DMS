@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
 });
 
 
-app.use("/api/v1/auth", authRouter);
+app.use("/api/v1", authRouter);
 app.use("/api/v1", caseRouter);
 
 app.use("/api/v1", documentsRouter);

@@ -16,6 +16,12 @@ import {
 import userRepository from "../repositories/user.repository.js";
 import redisClient from "../config/redis.js";
 import { hashRefreshToken } from "../utils/hashRefreshToken.js";
+import * as activationTokenRepo from "../repositories/activation-token.repository.js";
+import { activation_tokens, users } from "../db/schema/index.js";
+import { hashActivationToken } from "../utils/hashActivationToken.js"
+
+import { db } from "../db/index.js";
+import { eq } from "drizzle-orm";
 
 
 // Step 1 of login: validate credentials and hand back a short-lived MFA token
@@ -31,20 +37,35 @@ export async function login({ username, password }) {
     return { mfaRequired: false, mfaToken };
 }
 
-export async function changePassword(userId, { currentPassword, newPassword }) {
-    const user = await userRepository.findActiveById(userId);
-    if (!user) throw notFound("User not found");
-    if (currentPassword === newPassword) {
-        throw badRequest("New password cannot be the same as the current password.");
-    }
-    if (user.lastLoginAt) {
-        throw badRequest("Password change is not allowed.");
+export async function changePassword({ activationToken, newPassword }) {
+    const activationTokenFromDB = await activationTokenRepo.findByToken(hashActivationToken(activationToken));
+    if(!activationTokenFromDB) {
+        throw badRequest("Invalid activation token.");
     }
 
-    if (!await argon2.verify(user.hashedPassword, currentPassword)) {
-        throw invalidCredentials();
+    if (activationTokenFromDB.expiresAt < new Date()) {
+        throw badRequest("Activation token has expired.");
     }
-    await userRepository.setPasswordHash(userId, await argon2.hash(newPassword));
+
+    if (activationTokenFromDB.used) {
+        throw badRequest("Activation token has already been used.");
+    }
+
+    const userId = activationTokenFromDB.userId;
+
+    const passwordHash = await argon2.hash(newPassword);
+
+    await db.transaction(async (tx) => {
+        await tx.update(activation_tokens)
+            .set({ used : true })
+            .where(eq(activation_tokens.token, hashActivationToken(activationToken)));
+
+        await tx.update(users)
+            .set({ hashedPassword: passwordHash })
+            .where(eq(users.id, userId));
+
+    });
+
 }
 
 // Begin first-time MFA enrollment: generate a TOTP secret + QR for the
@@ -123,7 +144,7 @@ export async function verifyMfa(userId, code) {
     const accessToken = signAccessToken({ sub: user.id, username: user.username });
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
     await userRepository.completeMfaLogin({ userId, refreshToken });
-    
+
     redisClient.set(`${hashRefreshToken(refreshToken)}`, "active");
     redisClient.set(`${accessToken}`, "active");
 
@@ -167,7 +188,7 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
         await redisClient.set(`${prevAccessToken}`, "revoked");
     }
 
-    if(prevRefreshToken) {
+    if (prevRefreshToken) {
         const isRevoked = await redisClient.get(`${hashRefreshToken(prevRefreshToken)}`);
         if (isRevoked == "revoked") {
             await userRepository.revokeRefreshTokenForUser(userId);

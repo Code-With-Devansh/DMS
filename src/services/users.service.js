@@ -8,6 +8,10 @@ import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 import userRepository from "../repositories/user.repository.js";
 import refreshTokenRepository from "../repositories/refresh-token.repository.js";
+import * as activationTokenRepo from "../repositories/activation-token.repository.js";
+import { activation_tokens } from "../db/schema/index.js";
+import { hashActivationToken } from "../utils/hashActivationToken.js"
+
 
 // Roles whose membership is governed by admin pools + quorum (GOVERNANCE.md),
 // never minted by a single admin through the user-CRUD path. Provisioning or
@@ -15,7 +19,7 @@ import refreshTokenRepository from "../repositories/refresh-token.repository.js"
 const ADMIN_TIER_ROLES = new Set(["SYSTEM_ADMIN", "SECURITY_ADMIN", "ORG_ADMIN"]);
 
 function publicUser(user) {
-    const {hashedPassword, mfaSecret, mfaTempSecret, backupCodes, username, ...safeUser} = user;
+    const { hashedPassword, mfaSecret, mfaTempSecret, backupCodes, username, ...safeUser } = user;
     return safeUser;
 }
 
@@ -26,9 +30,9 @@ function assertOrgScope(actor, targetOrg) {
 }
 
 export async function listUsers(actor, filters) {
-    const scopedFilters = actor.role === "ORG_ADMIN" ? {...filters, org: actor.org} : filters;
+    const scopedFilters = actor.role === "ORG_ADMIN" ? { ...filters, org: actor.org } : filters;
     const result = await userRepository.list(scopedFilters);
-    return {...result, items: result.items.map(publicUser)};
+    return { ...result, items: result.items.map(publicUser) };
 }
 
 export async function provisionUser(actor, data, ip) {
@@ -49,6 +53,7 @@ export async function provisionUser(actor, data, ip) {
 
     // Insert + audit atomically: no user row without its USER_PROVISIONED entry.
     const user = await db.transaction(async (tx) => {
+
         const [created] = await tx.insert(users).values({
             ...data,
             username,
@@ -63,10 +68,19 @@ export async function provisionUser(actor, data, ip) {
             ip,
             details: { role: created.role, org: created.org, email: created.email },
         });
+
+
+        await tx.insert(activation_tokens).values({
+            userId: created.id,
+            token: hashActivationToken(activationToken),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        }).returning();
+
+
         return created;
     });
 
-    return {user: publicUser(user), activationToken};
+    return { user: publicUser(user), activationToken };
 }
 
 export async function getUser(actor, userId) {
@@ -108,7 +122,7 @@ export async function deactivateUser(actor, userId, ip) {
     assertOrgScope(actor, current.org);
 
     const updated = await db.transaction(async (tx) => {
-        const [row] = await tx.update(users).set({status: "DISABLED"}).where(eq(users.id, userId)).returning();
+        const [row] = await tx.update(users).set({ status: "DISABLED" }).where(eq(users.id, userId)).returning();
         await recordAudit(tx, {
             actorId: actor.id,
             action: AuditAction.USER_DEACTIVATED,
@@ -153,7 +167,7 @@ export async function resetMfa(actor, userId, ip) {
 export async function listSessions(actor, userId) {
     const user = await getUser(actor, userId);
     const sessions = await refreshTokenRepository.listActiveForUser(user.id);
-    return sessions.map((session) => ({...session, ip: "unknown", device: "unknown", lastSeenAt: session.createdAt}));
+    return sessions.map((session) => ({ ...session, ip: "unknown", device: "unknown", lastSeenAt: session.createdAt }));
 }
 
 export async function revokeSession(actor, sessionId) {

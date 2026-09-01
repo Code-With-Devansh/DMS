@@ -30,17 +30,8 @@ export async function login(req, res) {
 
 export async function changePassword(req, res) {
     const passwordData = parse(changePasswordSchema, req.body);
-    if (!passwordData.currentPassword || !passwordData.newPassword) {
-        throw badRequest("Current and new passwords are required");
-    }
 
-    const mfaToken = req.cookies?.[AUTH_COOKIES.mfa];
-    const userId = getUserIdFromMfaToken(mfaToken);
-    if (!userId) {
-        throw badRequest("Invalid MFA token");
-    }
-
-    await service.changePassword(userId, passwordData);
+    await service.changePassword(passwordData);
     return res.status(204).send();
 }
 
@@ -113,7 +104,11 @@ export async function stepUp(req, res) {
 export async function refresh(req, res) {
     const prevAccessToken = req.headers.authorization?.split(' ')[1];
 
+    console.log("Previous Access Token:", prevAccessToken);
+
     const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
+    console.log(req.cookies);
+    console.log(refreshToken);
     if (!refreshToken) {
         throw notFound("Refresh token not found in request cookies");
     }
