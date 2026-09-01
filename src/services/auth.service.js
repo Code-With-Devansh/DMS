@@ -258,7 +258,7 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
 
 
     const accessToken = signAccessToken({ sub: userId, username: user.username, role : user.role });
-    const refreshToken = signRefreshToken({ sub: userId });
+    const refreshToken = signRefreshToken({ sub: userId, username: user.username });
 
     await userRepository.addRefreshToken({ userId, refreshToken });
 
@@ -268,17 +268,15 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
     return { accessToken, newRefreshToken: refreshToken };
 }
 
-export async function logout(userId, accessToken) {
-    redisClient.set(`${hashAccessToken(accessToken)}`, "revoked", {
-        "EX" : Math.round((getAccessExpiryTime(accessToken) - Date.now() / 1000))
-    });
+export async function logout(userId, prevRefreshToken) {
+
     const user = await userRepository.findById(userId);
     if (!user) throw notFound("User not found");
     const [refreshToken] = await userRepository.getRefreshTokenByUserId(userId);
     if (!refreshToken) throw notFound("Refresh token not found");
 
-    redisClient.set(`${hashRefreshToken(refreshToken.tokenHash)}`, "revoked", {
-        "EX" : Math.round((getRefreshExpiryTime(refreshToken.tokenHash) - Date.now() / 1000))
+    redisClient.set(`${hashRefreshToken(prevRefreshToken)}`, "revoked", {
+        "EX": Math.round((getRefreshExpiryTime(prevRefreshToken) - Date.now() / 1000))
     });
 
     await userRepository.revokeRefreshTokenForUser(userId);

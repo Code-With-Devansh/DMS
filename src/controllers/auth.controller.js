@@ -163,10 +163,12 @@ export async function logout(req, res) {
     
     if (refreshToken) {
         const userId = getUserIdFromRefreshToken(refreshToken);
+        console.log(userId)
         if (!userId) {
             throw notFound("Refresh token is required");
         }
-        await service.logout(userId, accessToken);
+        await service.logout(userId, refreshToken);
+        console.log("Revoked refresh token for user:", userId, accessToken);
     }
 
     clearAuthCookies(res);
