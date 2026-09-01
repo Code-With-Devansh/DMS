@@ -14,13 +14,14 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
 import { count, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, adminPools, genesisShares } from "../db/schema/index.js";
+import { users, adminPools, genesisShares, activation_tokens } from "../db/schema/index.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { badRequest, conflict, forbidden } from "../lib/errors.js";
 import config from "../config/index.js";
 import userRepository from "../repositories/user.repository.js";
 import { validateThreshold } from "./poolMath.js";
 import * as pools from "./pools.js";
+import { hashActivationToken } from "../utils/hashToken.js";
 
 // Stable advisory-lock key serializing the bootstrap precondition check.
 // ("GOVB" as bytes = 0x474F5642.)
@@ -50,13 +51,25 @@ function deriveUsername(email) {
 // (link), otherwise create one. Runs inside the ceremony tx.
 async function upsertRosterUser(tx, entry, usernameTaken) {
   const existing = await userRepository.findByEmail(entry.email);
-  if (existing) return { id: existing.id, role: existing.role, created: false };
+
+  if (existing) {
+    return {
+      id: existing.id,
+      role: existing.role,
+      created: false,
+      activationToken: null,
+    };
+  }
 
   let username = entry.username || deriveUsername(entry.email);
+
   for (let suffix = 1; usernameTaken.has(username); suffix += 1) {
     username = `${entry.username || deriveUsername(entry.email)}-${suffix}`;
   }
+
   usernameTaken.add(username);
+
+  const activationToken = randomBytes(32).toString("base64url");
 
   const [row] = await tx
     .insert(users)
@@ -70,12 +83,26 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
       jurisdiction: entry.jurisdiction,
       status: "ACTIVE",
       username,
-      // Founders set a real password out-of-band (activation). Seed a random,
-      // unusable hash so the NOT NULL column is satisfied without a known secret.
-      hashedPassword: await argon2.hash(randomBytes(32).toString("base64url")),
+
+      hashedPassword: await argon2.hash(
+        randomBytes(32).toString("base64url")
+      ),
     })
     .returning();
-  return { id: row.id, role: row.role, created: true };
+
+  await tx.insert(activation_tokens).values({
+    userId: row.id,
+    token: hashActivationToken(activationToken),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    used: false,
+  });
+
+  return {
+    id: row.id,
+    role: row.role,
+    created: true,
+    activationToken,
+  };
 }
 
 // bootstrap({ secret, roster, pools, shares }, ip)
@@ -107,10 +134,21 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
     // Create/link founders, keyed by email.
     const usernameTaken = new Set();
     const byEmail = new Map();
+    const activations = [];
+
     for (const entry of roster) {
       const u = await upsertRosterUser(tx, entry, usernameTaken);
+
       byEmail.set(entry.email, u);
-    }
+
+      if (u.created && u.activationToken) {
+        activations.push({
+          email: entry.email,
+          username: entry.username || deriveUsername(entry.email),
+          activationToken: u.activationToken,
+        });
+      }
+}
 
     // Create pools + attach members.
     const createdPools = [];
@@ -164,6 +202,7 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
       pools: createdPools,
       founders: founders.length,
       shares: shares.length,
+      activations,
     };
   });
 }

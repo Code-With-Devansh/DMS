@@ -11,6 +11,7 @@ import referenceRouter from "./routes/reference.route.js";
 
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
+import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
 const port = 3000;
@@ -25,15 +26,15 @@ app.use(cookieParser());
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
-
+// unauthenticated keep it at the top.
+app.use("/api/v1", governanceRouter);
 
 app.use("/api/v1", authRouter);
-app.use("/api/v1", caseRouter);
+app.use("/api/v1/cases", requireAuth, caseRouter);
 
 app.use("/api/v1", documentsRouter);
 app.use("/api/v1", auditRouter);
 app.use("/api/v1", usersRouter);
-app.use("/api/v1", governanceRouter);
 app.use("/api/v1", referenceRouter);
 
 // Liveness + storage reachability (handy for a compose healthcheck).

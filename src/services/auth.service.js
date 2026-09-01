@@ -22,7 +22,7 @@ import * as activationTokenRepo from "../repositories/activation-token.repositor
 import { activation_tokens, users } from "../db/schema/index.js";
 
 import { db } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 
 // Step 1 of login: validate credentials and hand back a short-lived MFA token
@@ -64,34 +64,29 @@ export async function changePassword(userId, { oldPassword, newPassword }) {
 
 
 export async function activateAccount({ activationToken, newPassword }) {
-    const activationTokenFromDB = await activationTokenRepo.findByToken(hashActivationToken(activationToken));
-    if (!activationTokenFromDB) {
-        throw badRequest("Invalid activation token.");
-    }
+    const tokenHash = hashActivationToken(activationToken);
+    await db.transaction(async (tx) => {
+    const [claimedToken] = await tx
+        .update(activation_tokens)
+        .set({ used: true })
+        .where(
+            and(
+                eq(activation_tokens.token, tokenHash),
+                eq(activation_tokens.used, false)
+            )
+        )
+        .returning();
 
-    if (activationTokenFromDB.expiresAt < new Date()) {
-        throw badRequest("Activation token has expired.");
+    if (!claimedToken) {
+        throw badRequest("Invalid or already-used activation token.");
     }
-
-    if (activationTokenFromDB.used) {
-        throw badRequest("Activation token has already been used.");
-    }
-
-    const userId = activationTokenFromDB.userId;
 
     const passwordHash = await argon2.hash(newPassword);
-
-    await db.transaction(async (tx) => {
-        await tx.update(activation_tokens)
-            .set({ used: true })
-            .where(eq(activation_tokens.token, hashActivationToken(activationToken)));
-
-        await tx.update(users)
-            .set({ hashedPassword: passwordHash })
-            .where(eq(users.id, userId));
-
-    });
-
+    await tx
+        .update(users)
+        .set({ hashedPassword: passwordHash })
+        .where(eq(users.id, claimedToken.userId));
+});
 }
 
 // Begin first-time MFA enrollment: generate a TOTP secret + QR for the
@@ -240,7 +235,7 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
         } else {
 
             const savedRefreshToken = await userRepository.getRefreshTokenByUserId(userId);
-            if (!savedRefreshToken || savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)) {
+            if (!savedRefreshToken || savedRefreshToken.length<=0 || savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)) {
                 await userRepository.revokeRefreshTokenForUser(userId);
                 throw forbidden("Refresh token is invalid");
             }
