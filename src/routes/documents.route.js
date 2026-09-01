@@ -1,13 +1,12 @@
 import express from "express";
 import { upload } from "../middlewares/upload.js";
-import { currentUser } from "../middlewares/currentUser.js";
 import { requireAuth, requireStepUp } from "../middlewares/auth.js";
 import * as ctrl from "../controllers/documents.controller.js";
 
 const router = express.Router();
 
 // Dev identity shim; a real auth middleware mounted upstream will supersede it.
-router.use(currentUser);
+router.use(requireAuth);
 
 // Upload + list within a case
 router.post("/cases/:caseId/documents", upload.single("file"), ctrl.createDocument);

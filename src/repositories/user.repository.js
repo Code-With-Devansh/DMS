@@ -5,7 +5,7 @@ import { users } from "../db/schema/users.js";
 import { refreshTokens } from "../db/schema/refresh_tokens.js";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 
-import { hashRefreshToken } from "../utils/hashRefreshToken.js";
+import { hashRefreshToken } from "../utils/hashToken.js";
 import { getRefreshExpiryTime } from "../lib/tokens.js";
 
 
@@ -94,23 +94,27 @@ class UserRepository {
             }).where(eq(users.id, userId));
 
             const existingToken = await tx.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);
-            if(existingToken.length > 0) {
-                await tx.update(refreshTokens).set({ tokenHash: hashRefreshToken(refreshToken),revokedAt: null,expiresAt: new Date(expiresAt)
-        })
-        .where(eq(refreshTokens.userId, userId));
-} else {
-    await tx.insert(refreshTokens).values({
-        userId,
-        tokenHash: hashRefreshToken(refreshToken),
-        revokedAt: null,
-        expiresAt: new Date(expiresAt)
-    });
-}
+
+            if (existingToken.length > 0) {
+
+                await tx.update(refreshTokens).set({
+                    tokenHash: hashRefreshToken(refreshToken), revokedAt: null, expiresAt: new Date(expiresAt)
+                })
+                    .where(eq(refreshTokens.userId, userId));
+            } else {
+                await tx.insert(refreshTokens).values({
+                    userId,
+                    tokenHash: hashRefreshToken(refreshToken),
+                    revokedAt: null,
+                    expiresAt: new Date(expiresAt)
+                });
+            }
         });
     }
 
     async completeMfaLogin({ userId, refreshToken }) {
         const expiresAt = getRefreshExpiryTime(refreshToken) * 1000;
+        
         return db.transaction(async (tx) => {
             await tx.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
             const existingToken = await tx.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);
