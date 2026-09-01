@@ -1,7 +1,7 @@
 import express from 'express';
 import authRouter from "./routes/auth.route.js"
 import cookieParser from 'cookie-parser';
-
+import cors from 'cors'
 import documentsRouter from "./routes/documents.route.js";
 import auditRouter from "./routes/audit.route.js";
 import caseRouter from "./routes/cases.route.js";
@@ -13,7 +13,10 @@ import { errorHandler } from "./middlewares/error.js";
 
 const app = express();
 const port = 3000;
-
+app.use(cors({
+    origin: "http://localhost:5173", // React/Vite app
+    credentials: true,
+  }))
 app.use(express.json());
 app.use(cookieParser());
 
