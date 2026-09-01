@@ -117,8 +117,6 @@ export async function stepUp(req, res) {
 // POST /refresh — mint a new access token from the refresh cookie.
 export async function refresh(req, res) {
     const prevAccessToken = req.headers.authorization?.split(' ')[1];
-
-\
     const refreshToken = req.cookies?.[AUTH_COOKIES.refresh];
     if (!refreshToken) {
         throw notFound("Refresh token not found in request cookies");

@@ -12,15 +12,15 @@ router.post("/auth/mfa/verify", ctrl.verifyMfa);
 router.post("/auth/step-up", requireAuth, ctrl.stepUp);
 
 // Session lifecycle
-router.post("/refresh", ctrl.refresh);
-router.post("/logout",requireAuth, ctrl.logout);
+router.post("/auth/refresh", ctrl.refresh);
+router.post("/auth/logout", requireAuth, ctrl.logout);
 
 
 router.post("/auth/password", requireAuth, ctrl.changePassword);
 router.post("/activate", ctrl.activateAccount);
 
 // Current user (requires a valid access token)
-router.get("/me", requireAuth, ctrl.aboutUser);
+router.get("/auth/me", requireAuth, ctrl.aboutUser);
 
 
 export default router;

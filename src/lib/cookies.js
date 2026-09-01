@@ -10,7 +10,7 @@ export const AUTH_COOKIES = {
 
 // The refresh and mfa tokens are only ever consumed by the auth router, so we
 // scope them to it — the browser won't attach them to document/audit requests.
-const REFRESH_PATH = "/api/v1";
+const REFRESH_PATH = "/api/v1/auth";
 const MFA_PATH = "/api/v1/auth";
 
 // httpOnly keeps tokens out of reach of client-side JS (XSS mitigation);
