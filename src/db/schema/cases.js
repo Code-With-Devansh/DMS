@@ -6,6 +6,7 @@ import {
 	timestamp,
 	index,
 	unique,
+	numeric,
 } from "drizzle-orm/pg-core";
 
 import { caseStatus, classification } from "./enums.js";
@@ -14,13 +15,17 @@ import { users } from "./users.js";
 export const cases = pgTable(
 	"cases",
 	{
+		// case summary information
 		id: uuid("id").primaryKey().defaultRandom(),
 		caseNumber: text("case_number").notNull(),
 		title: text("title").notNull(),
 		type: text("type").notNull(),
 		status: caseStatus("status").notNull().default("OPEN"),
 		classification: classification("classification").notNull(),
+		documentCount: numeric("document_count").notNull().default(0),
 		jurisdiction: text("jurisdiction").notNull(),
+
+		
 		description: text("description"),
 		createdBy: uuid("created_by")
 			.notNull()

@@ -34,7 +34,7 @@ const usersRepo = {
   findById: jest.fn(),
 };
 const refreshTokenRepo = {
-  revokeAllForUser: jest.fn(),
+  revokeById: jest.fn(),
   listActiveForUser: jest.fn(),
   findById: jest.fn(),
   revokeById: jest.fn(),

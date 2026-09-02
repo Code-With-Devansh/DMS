@@ -8,9 +8,8 @@ import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 import userRepository from "../repositories/user.repository.js";
 import refreshTokenRepository from "../repositories/refresh-token.repository.js";
-import * as activationTokenRepo from "../repositories/activation-token.repository.js";
 import { activation_tokens } from "../db/schema/index.js";
-import { hashActivationToken, hashAccessToken } from "../utils/hashToken.js"
+import { hashActivationToken } from "../utils/hashToken.js"
 
 
 
@@ -136,8 +135,8 @@ export async function deactivateUser(actor, userId, ip) {
     });
 
     // Kill live sessions after the deactivation commits. Deliberately outside the
-    // audit transaction: revokeAllForUser also writes revocation tombstones to Redis.
-    await refreshTokenRepository.revokeAllForUser(userId);
+    // audit transaction: revoke by id also writes revocation tombstones to Redis.
+    await refreshTokenRepository.revokeById(userId);
     return publicUser(updated);
 }
 
@@ -162,7 +161,7 @@ export async function resetMfa(actor, userId, ip) {
         });
     });
 
-    await refreshTokenRepository.revokeAllForUser(userId);
+    await refreshTokenRepository.revokeById(userId);
 }
 
 export async function listSessions(actor, userId) {
