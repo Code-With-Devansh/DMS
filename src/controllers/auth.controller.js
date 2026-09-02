@@ -79,9 +79,7 @@ export async function verifyMfaEnrollment(req, res) {
     const { backupCodes, user, accessToken, refreshToken } = await service.verifyMfaEnrollment(userId, code);
     clearMfaCookie(res);
     setRefreshCookie(res, refreshToken);
-    redisClient.set(`${hashRefreshToken(refreshToken)}`, "active");
-    redisClient.set(`${hashAccessToken(accessToken)}`, "active");
-
+    
     return res.status(200).json({ backUpCodes: backupCodes, user, accessToken });
 }
 
@@ -163,7 +161,6 @@ export async function logout(req, res) {
     
     if (refreshToken) {
         const userId = getUserIdFromRefreshToken(refreshToken);
-        console.log(userId)
         if (!userId) {
             throw notFound("Refresh token is required");
         }

@@ -16,8 +16,9 @@ router.post("/auth/refresh", ctrl.refresh);
 router.post("/auth/logout", requireAuth, ctrl.logout);
 
 
-router.post("/auth/password", requireAuth, ctrl.changePassword);
-router.post("/activate", ctrl.activateAccount);
+
+router.post("/auth/change-password", requireAuth, ctrl.changePassword);
+router.post("/auth/activate", ctrl.activateAccount);
 
 // Current user (requires a valid access token)
 router.get("/auth/me", requireAuth, ctrl.aboutUser);
