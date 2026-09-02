@@ -1,7 +1,3 @@
-0. require auth executing on genesis.
-0.1. it should return activation token of user after genesis. (security we will see later)
-0.2. user dont know his username.
-0.3 password zod validation is disabled search: //disabled for testing.
 0.4 add organization table and jurisdiction table. schema changes remaining.
 
 1. Seal does not gate on integrity. The document above sealed while integrityStatus:TAMPERED. That matches the plan (seal checks anchoring, not byte-integrity), but it means a tampered document can still be sealed. If seal should require VERIFIED first, that's a small, well-contained follow-up.
