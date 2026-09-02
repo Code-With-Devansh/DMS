@@ -95,16 +95,15 @@ POST /auth/logout            Res 204
 GET  /auth/me                Res 200: Me               // current user + permissions
 
 // First login / MFA enrollment
-
-// user can change password till he/she has not setup mfa or login once.
-POST /auth/password          Req: { currentPassword?: string; newPassword: string }   Res 204
+POST /auth/activate          Req: { activationToken : string; newPassword: string }   Res 204
 POST /auth/mfa/enroll/start  Res 200: { secret: string; otpauthUrl: string; qrDataUrl: string }
-POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: string[], user: Me, accessToken }
+POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: { codeHash: string used: boolean }, user: Me, accessToken }
 
 // Step-up for sensitive actions
 POST /auth/step-up           Req: { code: string }     Res 200: { stepUpToken: string; expiresAt: ISODate }
 
 POST /auth/refresh cookie: refresh_token and Bearer Access-Token Res 200: { accessToken }
+POST /auth/change-password cookie: refresh_token and Bearer Acess-Token Req: { oldPassword: string, newPassword: string} 
 
 ```
 

@@ -65,28 +65,25 @@ export async function changePassword(userId, { oldPassword, newPassword }) {
 
 export async function activateAccount({ activationToken, newPassword }) {
     const tokenHash = hashActivationToken(activationToken);
-    await db.transaction(async (tx) => {
-    const [claimedToken] = await tx
-        .update(activation_tokens)
-        .set({ used: true })
-        .where(
-            and(
-                eq(activation_tokens.token, tokenHash),
-                eq(activation_tokens.used, false)
-            )
-        )
-        .returning();
-
-    if (!claimedToken) {
-        throw badRequest("Invalid or already-used activation token.");
-    }
-
     const passwordHash = await argon2.hash(newPassword);
-    await tx
-        .update(users)
-        .set({ hashedPassword: passwordHash })
-        .where(eq(users.id, claimedToken.userId));
-});
+    await db.transaction(async (tx) => {
+        const [claimedToken] = await tx
+            .update(activation_tokens)
+            .set({ used: true })
+            .where(
+                and(
+                    eq(activation_tokens.token, tokenHash),
+                    eq(activation_tokens.used, false)
+                )
+            )
+            .returning();
+
+        await tx
+            .update(users)
+            .set({ hashedPassword: passwordHash })
+            .where(eq(users.id, claimedToken.userId));
+
+    });
 }
 
 // Begin first-time MFA enrollment: generate a TOTP secret + QR for the
@@ -99,9 +96,10 @@ export async function startMfaEnrollment(userId) {
     }
 
     const secret = speakeasy.generateSecret({
-        name: `DMS (${user.username})`,
+        name: `DMS (${user.fullName})`,
         issuer: "DMS",
     });
+
     await userRepository.setPendingMfaSecret(userId, secret.base32);
     const qrDataUrl = await qrcode.toDataURL(secret.otpauth_url);
     return {
@@ -138,7 +136,7 @@ export async function verifyMfaEnrollment(userId, code) {
 
 
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
-    const accessToken = signAccessToken({ sub: user.id, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: user.id, username: user.username, role: user.role });
     await userRepository.completeMfaEnrollment({
         userId,
         tempSecret: user.mfaTempSecret,
@@ -147,8 +145,8 @@ export async function verifyMfaEnrollment(userId, code) {
     });
     const freshUser = await userRepository.findById(userId);
 
-    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now()/1000;
-    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now()/1000;
+    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now() / 1000;
+    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now() / 1000;
     redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
         "EX": Math.round(refreshExpiryTime)
     });
@@ -172,13 +170,13 @@ export async function verifyMfa(userId, code) {
         encoding: "base32", window: 1,
     });
     if (!verified) throw unauthenticated("Invalid MFA code");
-    const accessToken = signAccessToken({ sub: user.id, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: user.id, username: user.username, role: user.role });
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
     await userRepository.completeMfaLogin({ userId, refreshToken });
 
-    
-    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now()/1000;
-    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now()/1000;
+
+    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now() / 1000;
+    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now() / 1000;
 
     redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
         "EX": Math.round(refreshExpiryTime)
@@ -193,7 +191,7 @@ export async function verifyMfa(userId, code) {
 
 export async function createStepUpToken(userId, code) {
     const user = await userRepository.findActiveById(userId);
-    if (!user || user.status !== "ACTIVE") {
+    if (!user) {
         throw notFound("User not found");
     }
     if (!user.mfaSecret || !user.mfaEnrolled) {
@@ -235,7 +233,7 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
         } else {
 
             const savedRefreshToken = await userRepository.getRefreshTokenByUserId(userId);
-            if (!savedRefreshToken || savedRefreshToken.length<=0 || savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)) {
+            if (!savedRefreshToken || savedRefreshToken.length <= 0 || savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)) {
                 await userRepository.revokeRefreshTokenForUser(userId);
                 throw forbidden("Refresh token is invalid");
             }
@@ -252,13 +250,13 @@ export async function refresh(userId, prevAccessToken, prevRefreshToken) {
     if (!user) throw notFound("User not found");
 
 
-    const accessToken = signAccessToken({ sub: userId, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: userId, username: user.username, role: user.role });
     const refreshToken = signRefreshToken({ sub: userId, username: user.username });
 
     await userRepository.addRefreshToken({ userId, refreshToken });
 
     redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
-        "EX" : Math.round(getRefreshExpiryTime(refreshToken) - Date.now() / 1000)
+        "EX": Math.round(getRefreshExpiryTime(refreshToken) - Date.now() / 1000)
     });
     return { accessToken, newRefreshToken: refreshToken };
 }
