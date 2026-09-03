@@ -6,6 +6,7 @@ import {
 	timestamp,
 	index,
 	unique,
+	numeric,
 } from "drizzle-orm/pg-core";
 
 import { caseStatus, classification } from "./enums.js";
@@ -15,6 +16,7 @@ import { jurisdictions } from "./reference.js";
 export const cases = pgTable(
 	"cases",
 	{
+		// case summary information
 		id: uuid("id").primaryKey().defaultRandom(),
 		caseNumber: text("case_number").notNull(),
 		title: text("title").notNull(),

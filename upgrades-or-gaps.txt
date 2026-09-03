@@ -5,26 +5,26 @@
 
 1. Seal does not gate on integrity. The document above sealed while integrityStatus:TAMPERED. That matches the plan (seal checks anchoring, not byte-integrity), but it means a tampered document can still be sealed. If seal should require VERIFIED first, that's a small, well-contained follow-up.
 
-2. /cases/:id/legal-hold has DELETE wired to setHoldReason and POST wired to releaseHold — that looks swapped (setting a hold should be POST, releasing should be DELETE).
+// 2. /cases/:id/legal-hold has DELETE wired to setHoldReason and POST wired to releaseHold — that looks swapped (setting a hold should be POST, releasing should be DELETE). -> done
 
 3. Documents and audit routes aren't behind requireAuth — only the currentUser dev shim, which fabricates a user if req.user is unset. Only POST /documents/:id/seal has real auth.
 
-4. Dev identity shim (currentUser): if no req.user is already set, injects a fixed dev user id from config. This is currently mounted on all documents/* and audit/* routes except POST /documents/:id/seal.
+// 4. Dev identity shim (currentUser): if no req.user is already set, injects a fixed dev user id from config. This is currently mounted on all documents/* and audit/* routes except POST /documents/:id/seal.
 
 5. LEGAL_HOLD_REQUIRED and INTEGRITY_FAILED error codes are defined but no code path throws them yet — likely still landing.
 
-6. POST /logout returns HTTP 200 with a body claiming status: 204 rather than an actual 204 No Content.
+// 6. POST /logout returns HTTP 200 with a body claiming status: 204 rather than an actual 204 No Content. --> done
 
 7. The entire documents & audit API has no real authentication.
 src/routes/documents.route.js and src/routes/audit.route.js both mount currentUser (a dev shim: "Dev identity shim; a real auth middleware mounted upstream will supersede it") instead of requireAuth. But nothing upstream ever sets req.user, so currentUser always falls back to config.dev.userId — a hardcoded UUID from env. Result: upload, download, list, versions, integrity, custody, and the entire audit log are reachable with zero authentication, all running as one fixed identity. authorize() then runs RBAC/ABAC against whatever role that dev user happens to have in the DB. Contrast with cases.route.js, users.route.js, governance.route.js, which correctly do router.use(requireAuth). This single wiring gap defeats the auth/RBAC/ABAC/MFA system described in DESIGN §6–8 for the two most sensitive resource types in a legal evidence system.
 
-8. changePassword is inverted — no one can ever change their password after first login
+// 8. changePassword is inverted — no one can ever change their password after first login  --> user will use activatation token provided by admin or org and set newPassword but they change password later using oldPassword and newPassword if they are logged in.
 
-9. Dead code path that will throw at runtime: revokeRefreshToken.
+// 9. Dead code path that will throw at runtime: revokeRefreshToken.
 
 10. User enumeration + timing side-channel on login. login() does findActiveByUsername → if (!user) throw notFound(...)
 
-11. . Redis-backed token state has no TTLs on several paths → unbounded growth + revocation state that outlives the JWT.
+// 11. . Redis-backed token state has no TTLs on several paths → unbounded growth + revocation state that outlives the JWT. --> done
 
 12. Upload pipeline has no content validation.
 

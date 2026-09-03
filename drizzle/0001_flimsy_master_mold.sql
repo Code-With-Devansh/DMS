@@ -1,0 +1,1 @@
+ALTER TABLE "cases" ADD COLUMN "document_count" numeric DEFAULT 0 NOT NULL;

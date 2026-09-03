@@ -21,15 +21,15 @@ class RefreshTokenRepository {
         }).from(refreshTokens).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
     }
 
-    async revokeById(id, userId) {
-        await db.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.id, id), eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+    async revokeById( userId) {
+        await db.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
     }
     async create({ token, userId, expiresAt }) {
         const [refreshToken] = await db
             .insert(refreshTokens)
             .values({
                 userId,
-                tokenHash: await hashRefreshToken(token),
+                tokenHash: hashRefreshToken(token),
                 expiresAt,
             })
             .returning({ id: refreshTokens.id });
@@ -43,7 +43,7 @@ class RefreshTokenRepository {
             .from(refreshTokens)
             .where(
                 and(
-                    eq(refreshTokens.tokenHash, await hashRefreshToken(token)),
+                    eq(refreshTokens.tokenHash, hashRefreshToken(token)),
                     isNull(refreshTokens.revokedAt),
                 ),
             )
@@ -56,55 +56,18 @@ class RefreshTokenRepository {
         const [refreshToken] = await db
             .select()
             .from(refreshTokens)
-            .where(eq(refreshTokens.tokenHash, await hashRefreshToken(token)))
+            .where(eq(refreshTokens.tokenHash, hashRefreshToken(token)))
             .limit(1);
         return refreshToken;
     }
 
-    async revokeAllForUser(userId) {
 
-        const revokedTokens = await db
-            .select()
-            .from(refreshTokens)
-            .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
-
-
-        for(const token of revokedTokens) {
-            await redisClient.set(`${token.tokenHash}`, "revoked");
-        }
-
-
-        await db
-            .update(refreshTokens)
-            .set({ revokedAt: new Date() })
-            .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
-    }
-
-    async revokeAllForToken(token) {
-        let refreshToken = await this.findByToken(token);
-        while (refreshToken) {
-            await redisClient.set(`${refreshToken.tokenHash}`, "revoked");
-            await db
-                .update(refreshTokens)
-                .set({ revokedAt: new Date(), newRefreshTokenId: refreshToken.newRefreshTokenId })
-                .where(eq(refreshTokens.id, refreshToken.id));
-
-            const nextToken = await db
-                .select()
-                .from(refreshTokens)
-                .where(eq(refreshTokens.id, refreshToken.newRefreshTokenId))
-                .limit(1);
-
-            refreshToken = nextToken[0];
-        }
-    }
-
-    async revokeToken(token, newRefreshTokenId = null) {
+    async revokeToken(token) {
         const refreshToken = await this.findByToken(token);
         if (refreshToken) {
             await db
                 .update(refreshTokens)
-                .set({ revokedAt: new Date(), newRefreshTokenId })
+                .set({ revokedAt: new Date() })
                 .where(eq(refreshTokens.id, refreshToken.id));
             await redisClient.set(`${refreshToken.tokenHash}`, "revoked");
         }
