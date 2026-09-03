@@ -31,7 +31,7 @@ export const idParamSchema = uuidLike;
 // service; here we only constrain the *types* of the known fields and strip the
 // rest (zod objects strip unknown keys by default).
 const payloadSchema = z.object({
-  org: z.string().trim().min(1).max(200).optional(),
+  org: uuidLike.optional(),
   userId: uuidLike.optional(),
   poolType: poolTypeEnum.optional(),
   k: z.number().int().optional(),
@@ -56,7 +56,7 @@ export const objectSchema = z.object({
 export const listProposalsSchema = z.object({
   status: statusEnum.optional(),
   actionType: actionTypeEnum.optional(),
-  org: z.string().trim().min(1).max(200).optional(),
+  org: uuidLike.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -68,16 +68,16 @@ const rosterEntrySchema = z.object({
   fullName: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(320).transform((v) => v.toLowerCase()),
   role: roleEnum,
-  org: z.string().trim().min(1).max(200),
+  orgId: z.string().uuid(),
   clearance: classificationEnum,
-  jurisdiction: z.string().trim().min(1).max(200),
+  jurisdictionId: z.string().uuid(),
   badgeId: z.string().trim().max(100).optional(),
   username: z.string().trim().min(1).max(60).optional(),
 });
 
 const poolSpecSchema = z.object({
   poolType: poolTypeEnum,
-  org: z.string().trim().min(1).max(200).optional(),
+  org: uuidLike.optional(),
   k: z.number().int().min(2).optional(),
   members: z.array(z.string().trim().email().transform((v) => v.toLowerCase())).min(1),
 });

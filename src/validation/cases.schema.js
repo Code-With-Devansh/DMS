@@ -10,7 +10,7 @@ export const createCaseSchema = z.object({
   title: z.string().trim().min(1).max(500),
   type: z.string().trim().min(1).max(100),
   classification: classificationEnum,
-  jurisdiction: z.string().trim().min(1).max(200),
+  jurisdictionId: z.string().uuid(),
   description: z.string().trim().max(5000).optional(),
 });
 

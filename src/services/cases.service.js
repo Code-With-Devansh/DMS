@@ -16,7 +16,7 @@ function toSummary(row, documentCount = 0) {
     type: row.type,
     status: row.status,
     classification: row.classification,
-    jurisdiction: row.jurisdiction,
+    jurisdictionId: row.jurisdictionId,
     documentCount,
     updatedAt: row.updatedAt,
   };
@@ -52,7 +52,7 @@ export async function listCases(filters) {
     ...filters,
     userRole: user?.role,
     userClearance: user?.clearance,
-    jurisdiction: user?.jurisdiction,
+    jurisdictionId: user?.jurisdictionId,
   });
   const documentCounts = await Promise.all(
     result.rows.map((row) => caseRepository.countDocuments(row.id)),
@@ -70,7 +70,7 @@ export async function createCase(values, userId) {
   if (
     !user ||
     user.status !== "ACTIVE" ||
-    user.jurisdiction !== values.jurisdiction ||
+    user.jurisdictionId !== values.jurisdictionId ||
     clearanceRank[user.clearance] === undefined ||
     clearanceRank[values.classification] === undefined ||
     clearanceRank[user.clearance] < clearanceRank[values.classification]

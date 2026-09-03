@@ -24,20 +24,20 @@ function publicUser(user) {
     return safeUser;
 }
 
-function assertOrgScope(actor, targetOrg) {
-    if (actor.role === "ORG_ADMIN" && actor.org !== targetOrg) {
+function assertOrgScope(actor, targetOrgId) {
+    if (actor.role === "ORG_ADMIN" && actor.orgId !== targetOrgId) {
         throw forbidden("organization administrator cannot access another organization");
     }
 }
 
 export async function listUsers(actor, filters) {
-    const scopedFilters = actor.role === "ORG_ADMIN" ? { ...filters, org: actor.org } : filters;
+    const scopedFilters = actor.role === "ORG_ADMIN" ? { ...filters, orgId: actor.orgId } : filters;
     const result = await userRepository.list(scopedFilters);
     return { ...result, items: result.items.map(publicUser) };
 }
 
 export async function provisionUser(actor, data, ip) {
-    assertOrgScope(actor, data.org);
+    assertOrgScope(actor, data.orgId);
     // Closes the core governance hole: a single admin can no longer unilaterally
     // create another privileged identity. Admin-tier appointments are quorum-gated.
     if (ADMIN_TIER_ROLES.has(data.role)) {
@@ -67,7 +67,7 @@ export async function provisionUser(actor, data, ip) {
             targetType: TargetType.USER,
             targetId: created.id,
             ip,
-            details: { role: created.role, org: created.org, email: created.email },
+            details: { role: created.role, orgId: created.orgId, email: created.email },
         });
 
 
@@ -87,14 +87,14 @@ export async function provisionUser(actor, data, ip) {
 export async function getUser(actor, userId) {
     const user = await userRepository.findById(userId);
     if (!user) throw notFound("User not found");
-    assertOrgScope(actor, user.org);
+    assertOrgScope(actor, user.orgId);
     return publicUser(user);
 }
 
 export async function updateUser(actor, userId, data, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
-    assertOrgScope(actor, current.org);
+    assertOrgScope(actor, current.orgId);
     // A role change may never move a user *into* an admin tier through this path;
     // that is an appointment and must be a quorum-approved governance proposal.
     if (data.role && ADMIN_TIER_ROLES.has(data.role)) {
@@ -120,7 +120,7 @@ export async function updateUser(actor, userId, data, ip) {
 export async function deactivateUser(actor, userId, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
-    assertOrgScope(actor, current.org);
+    assertOrgScope(actor, current.orgId);
 
     const updated = await db.transaction(async (tx) => {
         const [row] = await tx.update(users).set({ status: "DISABLED" }).where(eq(users.id, userId)).returning();
@@ -144,7 +144,7 @@ export async function deactivateUser(actor, userId, ip) {
 export async function resetMfa(actor, userId, ip) {
     const current = await userRepository.findById(userId);
     if (!current) throw notFound("User not found");
-    assertOrgScope(actor, current.org);
+    assertOrgScope(actor, current.orgId);
 
     await db.transaction(async (tx) => {
         await tx.update(users).set({

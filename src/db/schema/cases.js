@@ -10,6 +10,7 @@ import {
 
 import { caseStatus, classification } from "./enums.js";
 import { users } from "./users.js";
+import { jurisdictions } from "./reference.js";
 
 export const cases = pgTable(
 	"cases",
@@ -20,7 +21,9 @@ export const cases = pgTable(
 		type: text("type").notNull(),
 		status: caseStatus("status").notNull().default("OPEN"),
 		classification: classification("classification").notNull(),
-		jurisdiction: text("jurisdiction").notNull(),
+		jurisdictionId: uuid("jurisdiction_id")
+			.notNull()
+			.references(() => jurisdictions.id, { onDelete: "restrict" }),
 		description: text("description"),
 		createdBy: uuid("created_by")
 			.notNull()
@@ -34,7 +37,7 @@ export const cases = pgTable(
 		unique("cases_case_number_key").on(t.caseNumber),
 		index("cases_status_idx").on(t.status),
 		index("cases_classification_idx").on(t.classification),
-		index("cases_jurisdiction_idx").on(t.jurisdiction),
+		index("cases_jurisdiction_idx").on(t.jurisdictionId),
 		index("cases_created_by_idx").on(t.createdBy),
 		index("cases_updated_at_idx").on(t.updatedAt),
 	],

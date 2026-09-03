@@ -35,7 +35,7 @@ async function resolveCase(resource = {}) {
 }
 
 async function canAccessCase(user, caseRow, policy) {
-  if (!caseRow || user.jurisdiction !== caseRow.jurisdiction) return false;
+  if (!caseRow || user.jurisdictionId !== caseRow.jurisdictionId) return false;
   const clearanceRank = policy.clearanceRank;
   const userClearance = clearanceRank[user.clearance];
   const caseClassification = clearanceRank[caseRow.classification];

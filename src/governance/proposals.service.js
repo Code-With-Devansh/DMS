@@ -150,7 +150,7 @@ export async function fileProposal(actorId, { actionType, payload }, ip) {
         payload,
         status: "PENDING",
         proposedBy: actorId,
-        org: targetSpec.org ?? null,
+        orgId: targetSpec.org ?? null,
         executesAfter,
       })
       .returning();
@@ -511,7 +511,7 @@ export async function listProposals({ status, actionType, org, page = 1, pageSiz
   const conds = [];
   if (status) conds.push(eq(sudoProposals.status, status));
   if (actionType) conds.push(eq(sudoProposals.actionType, actionType));
-  if (org) conds.push(eq(sudoProposals.org, org));
+  if (org) conds.push(eq(sudoProposals.orgId, org));
   const where = conds.length ? and(...conds) : undefined;
 
   const [items, [{ total }]] = await Promise.all([

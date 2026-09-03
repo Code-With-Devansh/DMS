@@ -76,11 +76,11 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
     .values({
       fullName: entry.fullName,
       role: entry.role,
-      org: entry.org,
+      orgId: entry.orgId,
       badgeId: entry.badgeId ?? null,
       email: entry.email,
       clearance: entry.clearance,
-      jurisdiction: entry.jurisdiction,
+      jurisdictionId: entry.jurisdictionId,
       status: "ACTIVE",
       username,
 
@@ -106,7 +106,7 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
 }
 
 // bootstrap({ secret, roster, pools, shares }, ip)
-// - roster: [{ fullName, email, role, org, clearance, jurisdiction, badgeId?, username? }]
+// - roster: [{ fullName, email, role, orgId, clearance, jurisdictionId, badgeId?, username? }]
 // - pools:  [{ poolType, org?, k?, members: [email, ...] }]   (m = members.length)
 // - shares: [{ holderLabel, isColdStored? }]                  (metadata only)
 export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] }, ip) {
@@ -165,7 +165,7 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
         if (!member) throw badRequest(`pool member ${email} is not in the roster`);
         await pools.addMember(tx, pool.id, member.id);
       }
-      createdPools.push({ id: pool.id, poolType: pool.poolType, org: pool.org, k: pool.k, m: pool.m });
+      createdPools.push({ id: pool.id, poolType: pool.poolType, org: pool.orgId, k: pool.k, m: pool.m });
     }
 
     // Genesis audit entry #0. actor_id is a NOT NULL FK → users(id); use the first
