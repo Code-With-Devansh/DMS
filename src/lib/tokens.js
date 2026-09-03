@@ -8,7 +8,6 @@
 // cannot forge another. HS256 is pinned on verify to avoid algorithm-confusion.
 import jwt from "jsonwebtoken";
 import config from "../config/index.js";
-import { invalidToken } from "./errors.js";
 
 const { jwt: cfg } = config;
 const SIGN_OPTS = { algorithm: "HS256" };
@@ -21,17 +20,10 @@ function sign(payload, secret, expiresIn, type) {
 }
 
 function verify(token, secret, type) {
-  let decoded;
-
-  try{
-    decoded = jwt.verify(token, secret, VERIFY_OPTS);
-    if (decoded.type !== type) {
-      throw new Error(`expected ${type} token but got ${decoded.type}`);
-    }
-  }catch (err) {
-    throw invalidToken(`invalid ${type} token: ${err.message}`);
+  const decoded = jwt.verify(token, secret, VERIFY_OPTS);
+  if (decoded.type !== type) {
+    throw new Error(`expected ${type} token but got ${decoded.type}`);
   }
-
   return decoded;
 }
 

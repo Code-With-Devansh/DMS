@@ -34,7 +34,7 @@ const usersRepo = {
   findById: jest.fn(),
 };
 const refreshTokenRepo = {
-  revokeById: jest.fn(),
+  revokeAllForUser: jest.fn(),
   listActiveForUser: jest.fn(),
   findById: jest.fn(),
   revokeById: jest.fn(),
@@ -106,8 +106,8 @@ describe("governance bootstrap (unauthenticated genesis route)", () => {
     const payload = {
       secret: "founding-secret",
       roster: [
-        { fullName: "Ada", email: "ada@x.example", role: "SYSTEM_ADMIN", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039", clearance: "SECRET", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e" },
-        { fullName: "Grace", email: "grace@x.example", role: "SYSTEM_ADMIN", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039", clearance: "SECRET", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e" },
+        { fullName: "Ada", email: "ada@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
+        { fullName: "Grace", email: "grace@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
       ],
       pools: [{ poolType: "SYSTEM_ADMIN", members: ["ada@x.example", "grace@x.example"] }],
     };
@@ -131,8 +131,8 @@ describe("governance regenesis (unauthenticated Tier-3 route)", () => {
     const payload = {
       secret: "founding-secret",
       roster: [
-        { fullName: "Ada", email: "ada@x.example", role: "SYSTEM_ADMIN", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039", clearance: "SECRET", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e" },
-        { fullName: "Grace", email: "grace@x.example", role: "SYSTEM_ADMIN", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039", clearance: "SECRET", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e" },
+        { fullName: "Ada", email: "ada@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
+        { fullName: "Grace", email: "grace@x.example", role: "SYSTEM_ADMIN", org: "hq", clearance: "SECRET", jurisdiction: "fed" },
       ],
       pools: [{ poolType: "SYSTEM_ADMIN", members: ["ada@x.example", "grace@x.example"] }],
     };
