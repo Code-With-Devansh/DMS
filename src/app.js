@@ -8,6 +8,7 @@ import caseRouter from "./routes/cases.route.js";
 import usersRouter from "./routes/users.route.js";
 import governanceRouter from "./routes/governance.route.js";
 import referenceRouter from "./routes/reference.route.js";
+import notificationsRouter from "./routes/notifications.route.js";
 
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
@@ -36,6 +37,7 @@ app.use("/api/v1", documentsRouter);
 app.use("/api/v1", auditRouter);
 app.use("/api/v1", usersRouter);
 app.use("/api/v1", referenceRouter);
+app.use("/api/v1", notificationsRouter);
 
 // Liveness + storage reachability (handy for a compose healthcheck).
 app.get("/health/storage", async (req, res) => {
@@ -63,3 +65,13 @@ start().catch((err) => {
   console.error("[startup] failed to start:", err);
   process.exit(1);
 });
+
+
+import argon2 from "argon2";
+
+console.log("Hashing password 'Test@12345' with argon2...");
+argon2.hash("Test@12345")
+  .then(hash => {
+    console.log("Hashed password:", hash);
+  }
+);
