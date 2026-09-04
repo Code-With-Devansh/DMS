@@ -1,12 +1,13 @@
 import { pgTable, uuid, text, boolean, timestamp, unique } from "drizzle-orm/pg-core";
 
-// Reference/lookup tables for the two previously-free-text fields on users/cases:
-// org (users.org, admin_pools.org) and jurisdiction (users.jurisdiction, cases.jurisdiction).
-// Both are simple admin-managed lookups (RBAC-gated, not quorum-gated — see
-// src/services/reference.service.js). `name` is the canonical value stored on
-// users/cases; it stays a plain text FK-less column there (changing that would
-// mean migrating existing free-text data), so `active` lets an admin retire a
-// value without breaking historical rows that still reference it.
+// Reference/lookup tables for what used to be free-text fields elsewhere: org
+// (users.org_id, admin_pools.org_id, sudo_proposals.org_id) and jurisdiction
+// (users.jurisdiction_id, cases.jurisdiction_id). Both are simple admin-managed
+// lookups (RBAC-gated, not quorum-gated — see src/services/reference.service.js).
+// `id` is now a real FK target for those columns; `active` lets an admin retire a
+// value going forward without breaking historical rows that still reference it —
+// deleting/renaming a row that's still referenced is blocked by the FK / by
+// reference.service.js's usage check respectively.
 
 export const orgs = pgTable(
   "orgs",

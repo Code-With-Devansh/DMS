@@ -34,7 +34,7 @@ const usersRepo = {
   findById: jest.fn(),
 };
 const refreshTokenRepo = {
-  revokeById: jest.fn(),
+  revokeAllForUser: jest.fn(),
   listActiveForUser: jest.fn(),
   findById: jest.fn(),
   revokeById: jest.fn(),
@@ -179,12 +179,12 @@ describe("governance proposals (auth + step-up)", () => {
     const response = await request(app)
       .post("/api/v1/governance/proposals")
       .set(AUTH)
-      .send({ actionType: "ONBOARD_ORG", payload: { org: "acme", members } });
+      .send({ actionType: "ONBOARD_ORG", payload: { org: "a06d33aa-49f1-4fb1-9e10-3c9392f88e81", members } });
 
     expect(response.status).toBe(201);
     const [, body] = governanceService.fileProposal.mock.calls[0];
     expect(body.payload.members).toEqual(members);
-    expect(body.payload.org).toBe("acme");
+    expect(body.payload.org).toBe("a06d33aa-49f1-4fb1-9e10-3c9392f88e81");
   });
 
   it("files a proposal, forwarding parsed (actorId, body, ip) to the service", async () => {
@@ -193,13 +193,13 @@ describe("governance proposals (auth + step-up)", () => {
     const response = await request(app)
       .post("/api/v1/governance/proposals")
       .set(AUTH)
-      .send({ actionType: "APPOINT_ORG_ADMIN", payload: { org: "metro-pd", userId: "00000000-0000-0000-0000-000000000009" } });
+      .send({ actionType: "APPOINT_ORG_ADMIN", payload: { org: "3f87f0b0-0d40-42e0-915b-b47e25214200", userId: "00000000-0000-0000-0000-000000000009" } });
 
     expect(response.status).toBe(201);
     expect(governanceService.fileProposal).toHaveBeenCalledTimes(1);
     const [actorId, body] = governanceService.fileProposal.mock.calls[0];
     expect(actorId).toBe("actor-1");
-    expect(body).toEqual({ actionType: "APPOINT_ORG_ADMIN", payload: { org: "metro-pd", userId: "00000000-0000-0000-0000-000000000009" } });
+    expect(body).toEqual({ actionType: "APPOINT_ORG_ADMIN", payload: { org: "3f87f0b0-0d40-42e0-915b-b47e25214200", userId: "00000000-0000-0000-0000-000000000009" } });
   });
 
   it("rejects a proposal with an unknown actionType (400) without hitting the service", async () => {
@@ -255,7 +255,7 @@ describe("provisionUser admin-tier guard (closes the core hole)", () => {
       const response = await request(app)
         .post("/api/v1/users")
         .set(AUTH)
-        .send({ fullName: "Mallory", email: "mallory@x.example", role, clearance: "SECRET", jurisdiction: "fed", org: "hq" });
+        .send({ fullName: "Mallory", email: "mallory@x.example", role, clearance: "SECRET", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039" });
 
       expect(response.status).toBe(403);
       expect(response.body.error.code).toBe("FORBIDDEN");
@@ -269,7 +269,7 @@ describe("provisionUser admin-tier guard (closes the core hole)", () => {
     usersRepo.findByEmail.mockResolvedValue(undefined);
     usersRepo.findByUsername.mockResolvedValue(undefined);
     // db.transaction(fn) runs fn with a tx whose insert(...).returning() yields the row.
-    const createdRow = { id: "user-9", role: "INVESTIGATING_OFFICER", org: "hq", email: "newbie@x.example" };
+    const createdRow = { id: "user-9", role: "INVESTIGATING_OFFICER", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039", email: "newbie@x.example" };
     const tx = {
       insert: jest.fn(() => ({ values: jest.fn(() => ({ returning: jest.fn().mockResolvedValue([createdRow]) })) })),
     };
@@ -278,7 +278,7 @@ describe("provisionUser admin-tier guard (closes the core hole)", () => {
     const response = await request(app)
       .post("/api/v1/users")
       .set(AUTH)
-      .send({ fullName: "Newbie", email: "newbie@x.example", role: "INVESTIGATING_OFFICER", clearance: "CONFIDENTIAL", jurisdiction: "fed", org: "hq" });
+      .send({ fullName: "Newbie", email: "newbie@x.example", role: "INVESTIGATING_OFFICER", clearance: "CONFIDENTIAL", jurisdictionId: "239ce294-d19c-49f9-b0aa-41218f93ab4e", orgId: "f0c3de91-0b0d-4824-b793-ad0e39bb7039" });
 
     expect(response.status).toBe(201);
     expect(recordAudit).toHaveBeenCalledTimes(1);

@@ -12,9 +12,9 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import argon2 from "argon2";
-import { count, sql } from "drizzle-orm";
+import { count, sql, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, adminPools, genesisShares, activation_tokens } from "../db/schema/index.js";
+import { users, adminPools, genesisShares, activation_tokens, orgs, jurisdictions } from "../db/schema/index.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { badRequest, conflict, forbidden } from "../lib/errors.js";
 import config from "../config/index.js";
@@ -26,6 +26,24 @@ import { hashActivationToken } from "../utils/hashToken.js";
 // Stable advisory-lock key serializing the bootstrap precondition check.
 // ("GOVB" as bytes = 0x474F5642.)
 const BOOTSTRAP_LOCK_KEY = 1196314690;
+
+// Resolve a reference-table (orgs/jurisdictions) row by name to its id, creating
+// it if it doesn't exist yet. Genesis-only: this is the one place org/jurisdiction
+// names arrive as free text instead of an FK id, because at genesis time the
+// lookup tables are necessarily empty. `cache` dedupes repeated names within one
+// ceremony call (e.g. every founder in the same org) to a single resolved id and
+// a single insert, rather than racing a unique-constraint insert per entry.
+async function resolveRefId(tx, table, name, cache) {
+  if (cache.has(name)) return cache.get(name);
+  const [existing] = await tx.select({ id: table.id }).from(table).where(eq(table.name, name)).limit(1);
+  if (existing) {
+    cache.set(name, existing.id);
+    return existing.id;
+  }
+  const [created] = await tx.insert(table).values({ name, active: true }).returning({ id: table.id });
+  cache.set(name, created.id);
+  return created.id;
+}
 
 // Constant-time comparison of the provided secret's sha256 against the configured
 // commitment. Returns false (rather than throwing) on any shape mismatch.
@@ -49,7 +67,7 @@ function deriveUsername(email) {
 
 // Resolve a roster entry to a users row id: reuse an existing user by email
 // (link), otherwise create one. Runs inside the ceremony tx.
-async function upsertRosterUser(tx, entry, usernameTaken) {
+async function upsertRosterUser(tx, entry, usernameTaken, refCache) {
   const existing = await userRepository.findByEmail(entry.email);
 
   if (existing) {
@@ -60,6 +78,9 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
       activationToken: null,
     };
   }
+
+  const orgId = await resolveRefId(tx, orgs, entry.org, refCache.orgs);
+  const jurisdictionId = await resolveRefId(tx, jurisdictions, entry.jurisdiction, refCache.jurisdictions);
 
   let username = entry.username || deriveUsername(entry.email);
 
@@ -76,11 +97,11 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
     .values({
       fullName: entry.fullName,
       role: entry.role,
-      org: entry.org,
+      orgId,
       badgeId: entry.badgeId ?? null,
       email: entry.email,
       clearance: entry.clearance,
-      jurisdiction: entry.jurisdiction,
+      jurisdictionId,
       status: "ACTIVE",
       username,
 
@@ -107,7 +128,11 @@ async function upsertRosterUser(tx, entry, usernameTaken) {
 
 // bootstrap({ secret, roster, pools, shares }, ip)
 // - roster: [{ fullName, email, role, org, clearance, jurisdiction, badgeId?, username? }]
-// - pools:  [{ poolType, org?, k?, members: [email, ...] }]   (m = members.length)
+//   org/jurisdiction are NAMES here (find-or-created in the ceremony tx — see
+//   resolveRefId), unlike provisionUser's orgId/jurisdictionId FK ids.
+// - pools:  [{ poolType, org?, k?, members: [email, ...] }]  org is also a NAME
+//   here (resolved through the same cache as the roster, so matching names land
+//   on one orgs row); m = members.length.
 // - shares: [{ holderLabel, isColdStored? }]                  (metadata only)
 export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] }, ip) {
   if (!config.governance.enabled) throw forbidden("governance subsystem is disabled");
@@ -135,9 +160,10 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
     const usernameTaken = new Set();
     const byEmail = new Map();
     const activations = [];
+    const refCache = { orgs: new Map(), jurisdictions: new Map() };
 
     for (const entry of roster) {
-      const u = await upsertRosterUser(tx, entry, usernameTaken);
+      const u = await upsertRosterUser(tx, entry, usernameTaken, refCache);
 
       byEmail.set(entry.email, u);
 
@@ -150,13 +176,16 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
       }
 }
 
-    // Create pools + attach members.
+    // Create pools + attach members. Pool org names resolve through the same
+    // refCache as the roster, so an ORG_ADMIN pool for "acme" lands on the same
+    // orgs row as any founder whose roster entry says org: "acme".
     const createdPools = [];
     for (const spec of poolSpecs) {
       const m = spec.members.length;
+      const orgId = spec.org ? await resolveRefId(tx, orgs, spec.org, refCache.orgs) : null;
       const pool = await pools.createPool(tx, {
         poolType: spec.poolType,
-        org: spec.org ?? null,
+        org: orgId,
         k: spec.k,
         m,
       });
@@ -165,7 +194,7 @@ export async function bootstrap({ secret, roster, pools: poolSpecs, shares = [] 
         if (!member) throw badRequest(`pool member ${email} is not in the roster`);
         await pools.addMember(tx, pool.id, member.id);
       }
-      createdPools.push({ id: pool.id, poolType: pool.poolType, org: pool.org, k: pool.k, m: pool.m });
+      createdPools.push({ id: pool.id, poolType: pool.poolType, org: pool.orgId, k: pool.k, m: pool.m });
     }
 
     // Genesis audit entry #0. actor_id is a NOT NULL FK → users(id); use the first
@@ -249,8 +278,9 @@ export async function regenesis({ secret, roster, pools: poolSpecs }, ip) {
     // Create/link the replacement founders.
     const usernameTaken = new Set();
     const byEmail = new Map();
+    const refCache = { orgs: new Map(), jurisdictions: new Map() };
     for (const entry of roster) {
-      const u = await upsertRosterUser(tx, entry, usernameTaken);
+      const u = await upsertRosterUser(tx, entry, usernameTaken, refCache);
       byEmail.set(entry.email, u);
     }
 

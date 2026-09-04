@@ -16,7 +16,7 @@ import { validateThreshold } from "./poolMath.js";
 function poolWhere(poolType, org) {
   return and(
     eq(adminPools.poolType, poolType),
-    org == null ? isNull(adminPools.org) : eq(adminPools.org, org),
+    org == null ? isNull(adminPools.orgId) : eq(adminPools.orgId, org),
   );
 }
 
@@ -63,7 +63,7 @@ export async function createPool(x, { poolType, org = null, k, m }) {
   const t = validateThreshold(k, m);
   const [row] = await x
     .insert(adminPools)
-    .values({ poolType, org: org ?? null, k: t.k, m: t.m })
+    .values({ poolType, orgId: org ?? null, k: t.k, m: t.m })
     .returning();
   return row;
 }

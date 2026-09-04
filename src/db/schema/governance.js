@@ -13,6 +13,7 @@ import {
 import { sql } from "drizzle-orm";
 
 import { poolType, sudoActionType, sudoStatus, approverPoolRole } from "./enums.js";
+import { orgs } from "./reference.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Governance / admin-hierarchy subsystem (GOVERNANCE.md). Admin-tier identities
@@ -34,18 +35,19 @@ export const adminPools = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     poolType: poolType("pool_type").notNull(),
-    org: text("org"),
+    orgId: uuid("org_id").references(() => orgs.id, { onDelete: "restrict" }),
     k: integer("k").notNull(),
     m: integer("m").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // A plain unique(pool_type, org) will NOT dedupe null orgs (NULLs are distinct
-    // in a UNIQUE constraint), so the singleton tiers need a partial index. One
-    // pool per type when org is null; one pool per (type, org) when it isn't.
-    uniqueIndex("admin_pools_singleton_idx").on(t.poolType).where(sql`${t.org} is null`),
-    uniqueIndex("admin_pools_type_org_idx").on(t.poolType, t.org).where(sql`${t.org} is not null`),
+    // A plain unique(pool_type, org_id) will NOT dedupe null orgs (NULLs are
+    // distinct in a UNIQUE constraint), so the singleton tiers need a partial
+    // index. One pool per type when org is null; one pool per (type, org) when
+    // it isn't.
+    uniqueIndex("admin_pools_singleton_idx").on(t.poolType).where(sql`${t.orgId} is null`),
+    uniqueIndex("admin_pools_type_org_idx").on(t.poolType, t.orgId).where(sql`${t.orgId} is not null`),
   ],
 );
 
@@ -79,7 +81,7 @@ export const sudoProposals = pgTable(
     payload: jsonb("payload").notNull(),
     status: sudoStatus("status").notNull().default("PENDING"),
     proposedBy: uuid("proposed_by").notNull(),
-    org: text("org"),
+    orgId: uuid("org_id").references(() => orgs.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     executesAfter: timestamp("executes_after", { withTimezone: true }),
     executedAt: timestamp("executed_at", { withTimezone: true }),

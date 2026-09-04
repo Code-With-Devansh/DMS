@@ -14,7 +14,7 @@ class CaseRepository {
 		return row ?? null;
 	}
 
-	async list({ status, q, assignedToMe, userId, userRole, userClearance, jurisdiction, page, pageSize }) {
+	async list({ status, q, assignedToMe, userId, userRole, userClearance, jurisdictionId, page, pageSize }) {
 		const conditions = [];
 		if (status) conditions.push(eq(cases.status, status));
 		if (q) {
@@ -37,7 +37,7 @@ class CaseRepository {
 				),
 			);
 		}
-		if (jurisdiction) conditions.push(eq(cases.jurisdiction, jurisdiction));
+		if (jurisdictionId) conditions.push(eq(cases.jurisdictionId, jurisdictionId));
 		const clearanceValues = ["PUBLIC", "RESTRICTED", "CONFIDENTIAL", "SECRET"];
 		const clearanceIndex = clearanceValues.indexOf(userClearance);
 		if (clearanceIndex < 0) {

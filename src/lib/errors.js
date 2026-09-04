@@ -37,7 +37,3 @@ export const integrityFailed = (message = "Data integrity check failed") =>
 
 export const badRequest = (message, details) =>
   new ApiError(400, "VALIDATION", message, details);
-
-export const invalidToken = (message = "Invalid token") =>
-  new ApiError(401, "INVALID_TOKEN", message);
-

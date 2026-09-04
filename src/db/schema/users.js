@@ -10,6 +10,7 @@ import {
 
 
 import { classification, role, status } from "./enums.js"
+import { orgs, jurisdictions } from "./reference.js";
 
 
 // users table schema definition for Drizzle ORM as given in docs/contract.md
@@ -20,13 +21,17 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     fullName: text("full_name").notNull(),
     role: role("role").notNull(),
-    org: text("org").notNull(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "restrict" }),
     badgeId: text("badge_id"),
     
     
     email: text("email").notNull().unique(),
     clearance: classification("clearance").notNull(),
-    jurisdiction: text("jurisdiction").notNull(),
+    jurisdictionId: uuid("jurisdiction_id")
+      .notNull()
+      .references(() => jurisdictions.id, { onDelete: "restrict" }),
     status: status("status").notNull(),
     
     // mfa secrets and backup codes so that we can verify the user during login
@@ -55,7 +60,8 @@ export const users = pgTable(
     // creating indexes for faster queries on frequently accessed columns
     // as per the requirements of the application in user repository and user service
     index("username_idx").on(t.username),
-    index("org_idx").on(t.org),
+    index("org_idx").on(t.orgId),
+    index("jurisdiction_idx").on(t.jurisdictionId),
     index("role_idx").on(t.role),
     index("status_idx").on(t.status),
   ],

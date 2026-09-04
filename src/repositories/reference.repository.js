@@ -1,13 +1,18 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { orgs, jurisdictions, users } from "../db/schema/index.js";
-import { cases } from "../db/schema/index.js";
+import { orgs, jurisdictions, users, cases, adminPools, sudoProposals } from "../db/schema/index.js";
 
 // Shared CRUD for the two lookup tables (orgs, jurisdictions). Both tables have
 // an identical shape (id, name, description, active, timestamps), so one
 // parameterized repository backs both rather than duplicating the same
 // queries twice.
-function makeRepository(table, userColumn, caseColumn) {
+//
+// usageColumns lists every column elsewhere in the schema that FKs to this
+// table's id — used only for a friendly pre-check message on delete; the FK's
+// ON DELETE RESTRICT is the actual enforcement, so this can never go stale
+// silently (a forgotten entry here just means a plain DB error instead of a
+// nicer one).
+function makeRepository(table, usageColumns) {
   return {
     async list({ activeOnly = false } = {}) {
       const query = db.select().from(table).orderBy(asc(table.name));
@@ -44,17 +49,27 @@ function makeRepository(table, userColumn, caseColumn) {
       return row ?? null;
     },
 
-    // Reference count on users/cases — used to block deletion of a value that's
-    // still in use (see reference.service.js). Renaming is fine since users/cases
-    // store the free-text name, not the row id, but that means a rename does NOT
-    // retroactively update existing users/cases rows.
-    async countUsages(name) {
-      const userRows = userColumn ? await db.select().from(users).where(eq(userColumn, name)) : [];
-      const caseRows = caseColumn ? await db.select().from(cases).where(eq(caseColumn, name)) : [];
-      return userRows.length + caseRows.length;
+    // Reference count across every FK'd table — used to give a friendly 409
+    // before the DB's ON DELETE RESTRICT would reject the delete anyway.
+    async countUsages(id) {
+      const counts = await Promise.all(
+        usageColumns.map(async ({ table: t, column }) => {
+          const rows = await db.select().from(t).where(eq(column, id));
+          return rows.length;
+        }),
+      );
+      return counts.reduce((a, b) => a + b, 0);
     },
   };
 }
 
-export const orgRepository = makeRepository(orgs, users.org, null);
-export const jurisdictionRepository = makeRepository(jurisdictions, users.jurisdiction, cases.jurisdiction);
+export const orgRepository = makeRepository(orgs, [
+  { table: users, column: users.orgId },
+  { table: adminPools, column: adminPools.orgId },
+  { table: sudoProposals, column: sudoProposals.orgId },
+]);
+
+export const jurisdictionRepository = makeRepository(jurisdictions, [
+  { table: users, column: users.jurisdictionId },
+  { table: cases, column: cases.jurisdictionId },
+]);

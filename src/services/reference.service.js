@@ -2,16 +2,15 @@ import { conflict, notFound } from "../lib/errors.js";
 import { orgRepository, jurisdictionRepository } from "../repositories/reference.repository.js";
 
 // Both orgs and jurisdictions are admin-managed lookups with an identical CRUD
-// shape (see reference.repository.js). users.org / users.jurisdiction /
-// cases.jurisdiction remain plain text columns (not FKs) — they store the
-// `name`, not the row id — so:
-//   - renaming a value does NOT retroactively update rows that already
-//     reference the old name (they keep the old free-text value)
-//   - deleting, or renaming to a different value, a name still in use would
-//     silently strand those rows (authorize.js does a strict `===` match,
-//     e.g. cases_jurisdiction, admin_pools.org), so both are blocked here
-//     while usages exist. Deactivating (active=false) is the safe way to
-//     retire a value without breaking existing references.
+// shape (see reference.repository.js). users.org_id / users.jurisdiction_id /
+// cases.jurisdiction_id / admin_pools.org_id / sudo_proposals.org_id are real
+// FKs to these tables' id (ON DELETE RESTRICT), so:
+//   - renaming a value (`name`/`description`) is always safe and retroactive —
+//     every referencing row follows the same id, no separate gate needed.
+//   - deleting a value still in use is rejected. The FK is what actually
+//     enforces this; countUsages here only produces a friendlier 409 instead
+//     of a raw constraint-violation error. Deactivating (active=false) is the
+//     way to retire a value without breaking existing references.
 function makeService(repository, kind) {
   return {
     async list(filters) {
@@ -37,13 +36,6 @@ function makeService(repository, kind) {
       if (values.name && values.name !== row.name) {
         const existing = await repository.findByName(values.name);
         if (existing) throw conflict(`${kind} '${values.name}' already exists`);
-        const usages = await repository.countUsages(row.name);
-        if (usages > 0) {
-          throw conflict(
-            `${kind} '${row.name}' is referenced by ${usages} existing record(s); deactivate it instead of renaming`,
-            "IN_USE",
-          );
-        }
       }
 
       return repository.update(id, values);
@@ -53,7 +45,7 @@ function makeService(repository, kind) {
       const row = await repository.findById(id);
       if (!row) throw notFound(`${kind} not found`);
 
-      const usages = await repository.countUsages(row.name);
+      const usages = await repository.countUsages(id);
       if (usages > 0) {
         throw conflict(
           `${kind} '${row.name}' is referenced by ${usages} existing record(s); deactivate it instead of deleting`,

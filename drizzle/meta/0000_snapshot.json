@@ -1,5 +1,5 @@
 {
-  "id": "5d9e9783-4a42-437d-929f-8b7b984a2756",
+  "id": "8ab68f47-47cc-4945-b8a2-a9fc5f27fcb9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -446,9 +446,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org": {
-          "name": "org",
-          "type": "text",
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -471,9 +471,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "jurisdiction": {
-          "name": "jurisdiction",
-          "type": "text",
+        "jurisdiction_id": {
+          "name": "jurisdiction_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -555,7 +555,22 @@
           "name": "org_idx",
           "columns": [
             {
-              "expression": "org",
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "jurisdiction_idx": {
+          "name": "jurisdiction_idx",
+          "columns": [
+            {
+              "expression": "jurisdiction_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -597,7 +612,34 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "users_org_id_orgs_id_fk": {
+          "name": "users_org_id_orgs_id_fk",
+          "tableFrom": "users",
+          "tableTo": "orgs",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "users_jurisdiction_id_jurisdictions_id_fk": {
+          "name": "users_jurisdiction_id_jurisdictions_id_fk",
+          "tableFrom": "users",
+          "tableTo": "jurisdictions",
+          "columnsFrom": [
+            "jurisdiction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_email_unique": {
@@ -898,9 +940,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "jurisdiction": {
-          "name": "jurisdiction",
-          "type": "text",
+        "jurisdiction_id": {
+          "name": "jurisdiction_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -979,7 +1021,7 @@
           "name": "cases_jurisdiction_idx",
           "columns": [
             {
-              "expression": "jurisdiction",
+              "expression": "jurisdiction_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1022,6 +1064,19 @@
         }
       },
       "foreignKeys": {
+        "cases_jurisdiction_id_jurisdictions_id_fk": {
+          "name": "cases_jurisdiction_id_jurisdictions_id_fk",
+          "tableFrom": "cases",
+          "tableTo": "jurisdictions",
+          "columnsFrom": [
+            "jurisdiction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
         "cases_created_by_users_id_fk": {
           "name": "cases_created_by_users_id_fk",
           "tableFrom": "cases",
@@ -1332,9 +1387,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org": {
-          "name": "org",
-          "type": "text",
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -1377,7 +1432,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"admin_pools\".\"org\" is null",
+          "where": "\"admin_pools\".\"org_id\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1392,20 +1447,34 @@
               "nulls": "last"
             },
             {
-              "expression": "org",
+              "expression": "org_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "where": "\"admin_pools\".\"org\" is not null",
+          "where": "\"admin_pools\".\"org_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "admin_pools_org_id_orgs_id_fk": {
+          "name": "admin_pools_org_id_orgs_id_fk",
+          "tableFrom": "admin_pools",
+          "tableTo": "orgs",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1669,9 +1738,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org": {
-          "name": "org",
-          "type": "text",
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -1748,7 +1817,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "sudo_proposals_org_id_orgs_id_fk": {
+          "name": "sudo_proposals_org_id_orgs_id_fk",
+          "tableFrom": "sudo_proposals",
+          "tableTo": "orgs",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

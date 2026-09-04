@@ -6,26 +6,24 @@ import {
 	timestamp,
 	index,
 	unique,
-	numeric,
 } from "drizzle-orm/pg-core";
 
 import { caseStatus, classification } from "./enums.js";
 import { users } from "./users.js";
+import { jurisdictions } from "./reference.js";
 
 export const cases = pgTable(
 	"cases",
 	{
-		// case summary information
 		id: uuid("id").primaryKey().defaultRandom(),
 		caseNumber: text("case_number").notNull(),
 		title: text("title").notNull(),
 		type: text("type").notNull(),
 		status: caseStatus("status").notNull().default("OPEN"),
 		classification: classification("classification").notNull(),
-		documentCount: numeric("document_count").notNull().default(0),
-		jurisdiction: text("jurisdiction").notNull(),
-
-		
+		jurisdictionId: uuid("jurisdiction_id")
+			.notNull()
+			.references(() => jurisdictions.id, { onDelete: "restrict" }),
 		description: text("description"),
 		createdBy: uuid("created_by")
 			.notNull()
@@ -39,7 +37,7 @@ export const cases = pgTable(
 		unique("cases_case_number_key").on(t.caseNumber),
 		index("cases_status_idx").on(t.status),
 		index("cases_classification_idx").on(t.classification),
-		index("cases_jurisdiction_idx").on(t.jurisdiction),
+		index("cases_jurisdiction_idx").on(t.jurisdictionId),
 		index("cases_created_by_idx").on(t.createdBy),
 		index("cases_updated_at_idx").on(t.updatedAt),
 	],

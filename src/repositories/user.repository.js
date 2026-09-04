@@ -11,10 +11,10 @@ import { getRefreshExpiryTime } from "../lib/tokens.js";
 
 class UserRepository {
 
-    async list({ role, org, status, q, page, pageSize }) {
+    async list({ role, orgId, status, q, page, pageSize }) {
         const filters = [];
         if (role) filters.push(eq(users.role, role));
-        if (org) filters.push(eq(users.org, org));
+        if (orgId) filters.push(eq(users.orgId, orgId));
         if (status) filters.push(eq(users.status, status));
         if (q) {
             const query = `%${q}%`;

@@ -31,7 +31,7 @@ export const idParamSchema = uuidLike;
 // service; here we only constrain the *types* of the known fields and strip the
 // rest (zod objects strip unknown keys by default).
 const payloadSchema = z.object({
-  org: z.string().trim().min(1).max(200).optional(),
+  org: uuidLike.optional(),
   userId: uuidLike.optional(),
   poolType: poolTypeEnum.optional(),
   k: z.number().int().optional(),
@@ -56,7 +56,7 @@ export const objectSchema = z.object({
 export const listProposalsSchema = z.object({
   status: statusEnum.optional(),
   actionType: actionTypeEnum.optional(),
-  org: z.string().trim().min(1).max(200).optional(),
+  org: uuidLike.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -64,6 +64,14 @@ export const listProposalsSchema = z.object({
 // ── bootstrap (genesis ceremony) ──────────────────────────────────────────────
 // roster: founding users to create/link; pools: pools to create with their member
 // emails (m = members.length); shares: genesis-share METADATA only (never secrets).
+//
+// org/jurisdiction here are plain NAMES, not FK ids — at genesis time the
+// orgs/jurisdictions tables are necessarily empty (nothing exists yet to
+// reference, and the only way to populate them, reference:manage, requires an
+// admin who doesn't exist yet either). bootstrap()/regenesis() resolve these
+// names to real rows (find-or-create, inside the ceremony transaction) before
+// inserting the roster users. Every other entry point (provisionUser) requires
+// a real orgId/jurisdictionId, since by then the lookup tables are populated.
 const rosterEntrySchema = z.object({
   fullName: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(320).transform((v) => v.toLowerCase()),
@@ -77,6 +85,8 @@ const rosterEntrySchema = z.object({
 
 const poolSpecSchema = z.object({
   poolType: poolTypeEnum,
+  // Same genesis exception as rosterEntrySchema.org — a plain name resolved
+  // find-or-create inside the ceremony tx, not an FK id.
   org: z.string().trim().min(1).max(200).optional(),
   k: z.number().int().min(2).optional(),
   members: z.array(z.string().trim().email().transform((v) => v.toLowerCase())).min(1),
