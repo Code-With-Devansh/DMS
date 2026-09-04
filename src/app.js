@@ -10,10 +10,12 @@ import usersRouter from "./routes/users.route.js";
 import governanceRouter from "./routes/governance.route.js";
 import referenceRouter from "./routes/reference.route.js";
 import notificationsRouter from "./routes/notifications.route.js";
+import searchRouter from "./routes/search.route.js";
 
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
 import { requireAuth } from './middlewares/auth.js';
+import { ensureDocumentsIndex } from "./search/documents.index.js";
 
 const app = express();
 const port = 3000;
@@ -40,6 +42,7 @@ app.use("/api/v1", auditRouter);
 app.use("/api/v1", usersRouter);
 app.use("/api/v1", referenceRouter);
 app.use("/api/v1", notificationsRouter);
+app.use("/api/v1", searchRouter);
 
 // Liveness + storage reachability (handy for a compose healthcheck).
 app.get("/health/storage", async (req, res) => {
@@ -58,6 +61,8 @@ app.use(errorHandler);
 async function start() {
   // Make sure the documents bucket exists before serving (retries a cold MinIO).
   await storage.ensureBucket();
+  // Idempotent — creates the OpenSearch index on first boot, no-ops after.
+  await ensureDocumentsIndex();
   app.listen(port, () => {
     console.log(`DMS app listening on port ${port}`);
   });

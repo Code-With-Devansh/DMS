@@ -15,7 +15,15 @@ async function autoTagging(extractedText) {
 }
 
 
-export function createDocumentProcessingProcessor({ storage, repo, db, recordAudit, AuditAction, TargetType }) {
+export function createDocumentProcessingProcessor({
+  storage,
+  repo,
+  db,
+  recordAudit,
+  AuditAction,
+  TargetType,
+  indexDocumentVersion,
+}) {
   return async function processDocument(job) {
     const { versionId, documentId, caseId, actor } = job.data;
  
@@ -50,6 +58,16 @@ export function createDocumentProcessingProcessor({ storage, repo, db, recordAud
         details: { documentId, caseId, tagsAdded: tags ?? [], entities: entities ?? [] },
       });
     });
+
+    // Best-effort: OpenSearch being briefly unavailable shouldn't fail the whole
+    // job and re-flip a READY document back to FAILED. A reconciliation sweep
+    // (same pattern as the ledger's pending-anchor sweeper) is the right way to
+    // catch documents that silently missed indexing — not implemented yet.
+    try {
+      await indexDocumentVersion({ documentId, versionId, extractedText, entities: entities ?? [], tags: tags ?? [] });
+    } catch (err) {
+      console.error({ err, documentId, versionId }, "[search] failed to index document, will not retry job");
+    }
  
     return { versionId, tagsAdded: tags ?? [], entitiesFound: entities?.length ?? 0 };
   };

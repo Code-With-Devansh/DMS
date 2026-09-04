@@ -74,6 +74,15 @@ export default {
     // Fallback identity used by middlewares/currentUser.js until real auth lands.
     userId: process.env.DEV_USER_ID || "00000000-0000-0000-0000-000000000001",
   },
+  opensearch: {
+    nodes: (process.env.OPENSEARCH_NODES || "http://opensearch:9200").split(","),
+    username: process.env.OPENSEARCH_USERNAME || undefined,
+    password: process.env.OPENSEARCH_PASSWORD || undefined,
+    // Self-signed certs are normal for a dev/on-prem cluster; require a real CA
+    // in prod by setting OPENSEARCH_REJECT_UNAUTHORIZED=true.
+    rejectUnauthorized: (process.env.OPENSEARCH_REJECT_UNAUTHORIZED || "false") === "true",
+    requestTimeoutMs: Number(process.env.OPENSEARCH_REQUEST_TIMEOUT_MS) || 10_000,
+  },
     app: {
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),
