@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, or, ilike, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { documents, documentVersions, documentAccessGrants } from "../db/schema/index.js";
 
@@ -36,6 +36,33 @@ export async function listDocumentsByCase(caseId, { page, pageSize }) {
     .from(documents)
     .where(where);
   return { rows, total: Number(total) };
+}
+
+// ── document processing pipeline (documentProcessing.processor.js) ────────────
+export async function setProcessingStatus(tx, { versionId, processingStatus }) {
+  const [row] = await tx
+    .update(documentVersions)
+    .set({ processingStatus })
+    .where(eq(documentVersions.id, versionId))
+    .returning();
+  return row;
+}
+
+
+export async function appendDocumentTags(tx, { documentId, tags }) {
+  if (!tags?.length) return;
+  const [row] = await tx
+    .update(documents)
+    .set({
+      tags: sql`(
+        select coalesce(array_agg(distinct t), '{}')
+        from unnest(${documents.tags} || ${tags}::text[]) as t
+      )`,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(documents.id, documentId))
+    .returning();
+  return row;
 }
 
 // ── document_versions ─────────────────────────────────────────────────────────
