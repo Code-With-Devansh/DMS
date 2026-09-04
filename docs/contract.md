@@ -121,8 +121,8 @@ GET   /cases/:id                                        Res 200: Case
 PATCH /cases/:id   Req: Partial<{ title; status; classification; description }>   Res 200: Case
 POST  /cases/:id/officers     Req: { userId: ID; roleOnCase: string }   Res 200: Case
 DELETE /cases/:id/officers/:userId                      Res 200: Case
-DELETE  /cases/:id/legal-hold   Req: { reason: string }   Res 200: Case     // step-up
-POST /cases/:id/legal-hold                            Res 200: Case     // step-up
+POST  /cases/:id/legal-hold   Req: { reason: string }   Res 200: Case     // step-up
+DELETE /cases/:id/legal-hold                            Res 200: Case     // step-up
 ```
 
 ## 3. Documents
