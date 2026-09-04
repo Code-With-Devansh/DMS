@@ -17,6 +17,7 @@ import { getAccessExpiryTime, getUserIdFromMfaToken, getUserIdFromRefreshToken }
 // POST /login — verify credentials, then stash a short-lived MFA token in a
 // cookie
 export async function login(req, res) {
+    console.log(req.authorization)
     const loginData = parse(loginSchema, req.body);
     const { mfaRequired, mfaToken } = await service.login(loginData);
     setMfaCookie(res, mfaToken);

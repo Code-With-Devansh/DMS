@@ -234,6 +234,16 @@ CREATE TABLE "orgs" (
 	CONSTRAINT "orgs_name_key" UNIQUE("name")
 );
 --> statement-breakpoint
+CREATE TABLE "notifications" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"type" text NOT NULL,
+	"message" text NOT NULL,
+	"link" text,
+	"read" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "document_access_grants" ADD CONSTRAINT "document_access_grants_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_restored_from_fkey" FOREIGN KEY ("restored_from_version_id") REFERENCES "public"."document_versions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -250,6 +260,7 @@ ALTER TABLE "admin_pools" ADD CONSTRAINT "admin_pools_org_id_orgs_id_fk" FOREIGN
 ALTER TABLE "sudo_approvals" ADD CONSTRAINT "sudo_approvals_proposal_id_sudo_proposals_id_fk" FOREIGN KEY ("proposal_id") REFERENCES "public"."sudo_proposals"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sudo_objections" ADD CONSTRAINT "sudo_objections_proposal_id_sudo_proposals_id_fk" FOREIGN KEY ("proposal_id") REFERENCES "public"."sudo_proposals"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sudo_proposals" ADD CONSTRAINT "sudo_proposals_org_id_orgs_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."orgs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "document_access_grants_grantee_idx" ON "document_access_grants" USING btree ("grantee_user_id");--> statement-breakpoint
 CREATE INDEX "document_access_grants_active_idx" ON "document_access_grants" USING btree ("document_id","grantee_user_id") WHERE "document_access_grants"."revoked_at" is null;--> statement-breakpoint
 CREATE INDEX "document_versions_document_id_idx" ON "document_versions" USING btree ("document_id","version_no");--> statement-breakpoint
@@ -291,4 +302,6 @@ CREATE INDEX "sudo_proposals_action_type_idx" ON "sudo_proposals" USING btree ("
 CREATE INDEX "sudo_proposals_proposed_by_idx" ON "sudo_proposals" USING btree ("proposed_by");--> statement-breakpoint
 CREATE UNIQUE INDEX "abac_policies_version_key" ON "abac_policies" USING btree ("version");--> statement-breakpoint
 CREATE INDEX "user_id_idx" ON "activation_tokens" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "token_idx" ON "activation_tokens" USING btree ("token");
+CREATE INDEX "token_idx" ON "activation_tokens" USING btree ("token");--> statement-breakpoint
+CREATE INDEX "notifications_user_created_at_idx" ON "notifications" USING btree ("user_id","created_at");--> statement-breakpoint
+CREATE INDEX "notifications_user_unread_idx" ON "notifications" USING btree ("user_id","read");

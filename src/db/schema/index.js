@@ -9,3 +9,4 @@ export * from "./governance.js";
 export * from "./abac.js";
 export * from "./activation_tokens.js";
 export * from "./reference.js";
+export * from "./notifications.js";
