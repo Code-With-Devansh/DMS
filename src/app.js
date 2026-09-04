@@ -3,6 +3,7 @@ import authRouter from "./routes/auth.route.js"
 import cookieParser from 'cookie-parser';
 import cors from 'cors'
 import documentsRouter from "./routes/documents.route.js";
+import commentsRouter from "./routes/comments.route.js";
 import auditRouter from "./routes/audit.route.js";
 import caseRouter from "./routes/cases.route.js";
 import usersRouter from "./routes/users.route.js";
@@ -33,6 +34,7 @@ app.use("/api/v1", authRouter);
 app.use("/api/v1/cases", requireAuth, caseRouter);
 
 app.use("/api/v1", documentsRouter);
+app.use("/api/v1", commentsRouter);
 app.use("/api/v1", auditRouter);
 app.use("/api/v1", usersRouter);
 app.use("/api/v1", referenceRouter);
