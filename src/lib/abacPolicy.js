@@ -50,6 +50,13 @@ export const DEFAULT_POLICY = Object.freeze({
     "document:sign": ["document:sign", "documents:sign"],
     "document:seal": ["document:seal", "document:manage", "documents:manage"],
     "document:delete": ["document:delete", "document:manage", "documents:manage"],
+    // POST /documents/:id/access. Broad at the RBAC layer (mirrors document:read
+    // — anyone who could plausibly be a case creator/officer holds it), narrowed
+    // per-request by documents.service#grantAccess: same-jurisdiction grants
+    // need the actor to already have case access (elevated role / creator /
+    // officer, same set canAccessCase trusts); cross-jurisdiction grants
+    // additionally require the actor to be ORG_ADMIN or SYSTEM_ADMIN.
+    "document:share": ["document:share", "document:manage", "documents:manage"],
     "governance:read": ["governance:read"],
     "governance:propose": ["governance:propose"],
     // AUDITOR only holds "governance:vote" (never a raw "governance:approve"),
@@ -68,13 +75,13 @@ export const DEFAULT_POLICY = Object.freeze({
     "reference:manage": ["reference:manage"],
   },
   permissionsByRole: {
-    INVESTIGATING_OFFICER: ["case:read", "document:read", "document:write"],
-    SUPERVISOR: ["case:read", "case:manage", "document:read", "document:write"],
+    INVESTIGATING_OFFICER: ["case:read", "document:read", "document:write", "document:share"],
+    SUPERVISOR: ["case:read", "case:manage", "document:read", "document:write", "document:share"],
     PROSECUTOR: ["case:read", "document:read", "document:sign"],
     JUDGE: ["case:read", "document:read", "document:sign"],
-    COURT_CLERK: ["case:read", "document:read", "document:write"],
-    FORENSIC_ANALYST: ["document:read", "document:write"],
-    RECORDS_ADMIN: ["document:read", "document:write", "user:read"],
+    COURT_CLERK: ["case:read", "document:read", "document:write", "document:share"],
+    FORENSIC_ANALYST: ["document:read", "document:write", "document:share"],
+    RECORDS_ADMIN: ["document:read", "document:write", "user:read", "document:share"],
     SECURITY_ADMIN: ["document:read", "audit:read", "user:manage", "governance:read", "governance:propose", "governance:approve", "reference:manage"],
     ORG_ADMIN: ["user:manage", "case:manage", "document:manage", "governance:read", "governance:propose", "governance:approve"],
     SYSTEM_ADMIN: ["*"],

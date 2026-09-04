@@ -18,6 +18,11 @@ export const AuditAction = Object.freeze({
   DOCUMENT_SEALED: "DOCUMENT_SEALED",
   // Wired once the corresponding endpoint lands:
   DOCUMENT_DELETED: "DOCUMENT_DELETED",
+  // POST /documents/:id/access — read-only, time-bound, per-user grant. GRANTED
+  // covers both a first grant and a renewal (expiresAt update) of an existing
+  // one; details distinguishes them + whether the grant crosses jurisdiction.
+  DOCUMENT_ACCESS_GRANTED: "DOCUMENT_ACCESS_GRANTED",
+  DOCUMENT_ACCESS_REVOKED: "DOCUMENT_ACCESS_REVOKED",
 
   // ---- Governance / admin-hierarchy subsystem (GOVERNANCE.md) ----
   // Sudo proposal lifecycle: filed -> each approval/objection -> executed.

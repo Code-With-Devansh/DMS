@@ -1,8 +1,11 @@
 import { randomUUID, createHash } from "node:crypto";
 import { db } from "../db/index.js";
 import { storage, versionStorageKey } from "../storage/index.js";
-import { conflict, notFound } from "../lib/errors.js";
+import { conflict, notFound, forbidden, badRequest } from "../lib/errors.js";
 import * as repo from "../repositories/documents.repo.js";
+import caseRepository from "../repositories/case.repository.js";
+import userRepository from "../repositories/user.repository.js";
+import { getActivePolicy } from "../lib/abacPolicy.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { enqueueLedgerAnchor } from "../jobs/ledger.queue.js";
 import { ledger } from "../ledger/index.js";
@@ -524,4 +527,132 @@ export async function sealDocument({ documentId, userId, ip, reason } = {}) {
   });
 
   return getDocument(documentId);
+}
+
+// ── access grants (POST /documents/:id/access) ─────────────────────────────
+// Read-only, whole-document, time-bound, per-user. See authorize.js#canAccessCase
+// for how a grant is consumed (it's the only thing that can cross jurisdiction)
+// and the design discussion in this conversation for why the rules below are
+// shaped this way.
+const ORG_TIER_ROLES = new Set(["ORG_ADMIN", "SYSTEM_ADMIN"]);
+
+function toAccessGrantDTO(row) {
+  return {
+    id: row.id,
+    documentId: row.documentId,
+    grantee: { id: row.granteeUserId },
+    grantedBy: { id: row.grantedBy },
+    crossJurisdiction: row.crossJurisdiction,
+    expiresAt: row.expiresAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+// Same relation canAccessCase trusts for in-jurisdiction access: elevated role,
+// case creator, or assigned officer. Computed directly (not via authorize())
+// because authorize()'s resource check is jurisdiction-first and would reject
+// the cross-jurisdiction branch in grantAccess below before ever reaching it.
+async function hasStandingCaseAccess(actor, caseRow, policy) {
+  if (policy.elevatedCaseRoles.includes(actor.role)) return true;
+  if (caseRow.createdBy === actor.id) return true;
+  const officers = await caseRepository.listOfficers(caseRow.id);
+  return officers.some((o) => o.userId === actor.id);
+}
+
+export async function grantAccess({ documentId, actor, granteeUserId, expiresAt, ip }) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  if (doc.sealed) throw conflict("document is sealed; access grants are frozen");
+
+  const caseRow = await caseRepository.findById(doc.caseId);
+  if (!caseRow) throw notFound("case not found");
+
+  if (granteeUserId === actor.id) throw badRequest("cannot grant access to yourself");
+  const grantee = await userRepository.findById(granteeUserId);
+  if (!grantee || grantee.status !== "ACTIVE") throw badRequest("grantee is not an active user");
+
+  const policy = await getActivePolicy();
+  const clearanceRank = policy.clearanceRank;
+  if ((clearanceRank[grantee.clearance] ?? -1) < (clearanceRank[caseRow.classification] ?? Infinity)) {
+    // A grant gives reach, not a clearance override — this stays a hard floor.
+    throw badRequest("grantee's clearance is below the case's classification");
+  }
+
+  const crossJurisdiction = grantee.jurisdictionId !== caseRow.jurisdictionId;
+
+  if (crossJurisdiction) {
+    // Crossing jurisdiction is a privileged, org-tier call — the actor doesn't
+    // need standing access to THIS case to make it (that's the point: they're
+    // the trusted authority for the boundary being crossed, not a case-team
+    // member extending their own visibility).
+    if (!ORG_TIER_ROLES.has(actor.role)) {
+      throw forbidden("cross-jurisdiction access grants require an organization administrator");
+    }
+  } else if (!(await hasStandingCaseAccess(actor, caseRow, policy))) {
+    throw forbidden("only an elevated role, the case creator, or an assigned officer can share this document");
+  }
+
+  const row = await db.transaction(async (tx) => {
+    const grant = await repo.upsertAccessGrant(tx, {
+      documentId,
+      granteeUserId,
+      grantedBy: actor.id,
+      expiresAt,
+      crossJurisdiction,
+    });
+    await recordAudit(tx, {
+      actorId: actor.id,
+      action: AuditAction.DOCUMENT_ACCESS_GRANTED,
+      targetType: TargetType.DOCUMENT,
+      targetId: documentId,
+      ip,
+      details: { granteeUserId, expiresAt, crossJurisdiction },
+    });
+    return grant;
+  });
+
+  return toAccessGrantDTO(row);
+}
+
+export async function revokeAccess({ documentId, actor, granteeUserId, ip }) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+
+  const existing = await repo.findAccessGrant(documentId, granteeUserId);
+  if (!existing || existing.revokedAt) throw notFound("no active grant for this user on this document");
+
+  // Same authority that could have created this grant can revoke it (plus the
+  // original granter, in case a role changed since — revocation should never
+  // be harder to invoke than the grant it's undoing).
+  if (existing.crossJurisdiction) {
+    if (!ORG_TIER_ROLES.has(actor.role) && actor.id !== existing.grantedBy) {
+      throw forbidden("cross-jurisdiction access grants can only be revoked by an organization administrator");
+    }
+  } else if (actor.id !== existing.grantedBy) {
+    const caseRow = await caseRepository.findById(doc.caseId);
+    const policy = await getActivePolicy();
+    if (!caseRow || !(await hasStandingCaseAccess(actor, caseRow, policy))) {
+      throw forbidden("only an elevated role, the case creator, or an assigned officer can revoke this grant");
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await repo.revokeAccessGrant(tx, { documentId, granteeUserId });
+    await recordAudit(tx, {
+      actorId: actor.id,
+      action: AuditAction.DOCUMENT_ACCESS_REVOKED,
+      targetType: TargetType.DOCUMENT,
+      targetId: documentId,
+      ip,
+      details: { granteeUserId, crossJurisdiction: existing.crossJurisdiction },
+    });
+  });
+}
+
+export async function listAccessGrants(documentId) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  const rows = await repo.listAccessGrants(documentId);
+  return rows.map(toAccessGrantDTO);
 }

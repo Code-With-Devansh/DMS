@@ -126,3 +126,46 @@ export const documentVersions = pgTable(
       .where(sql`${t.ledgerStatus} <> 'ANCHORED'`),
   ],
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// document_access_grants: explicit, per-user, read-only, time-bound access to
+// ONE document. This is the only mechanism that can cross the jurisdiction gate
+// in authorize.js#canAccessCase (in-jurisdiction case-team access is unaffected
+// by this table — it never needs a grant). Same-jurisdiction grants are just a
+// convenience "share with one more person" path.
+//
+// granteeUserId / grantedBy point at users (teammate-owned) — plain uuid, no
+// .references(), matching documents.case_id / documents.created_by above (FK
+// added via the external_fks custom migration, not here).
+//
+// Re-granting (same document + grantee) upserts this row rather than inserting
+// a duplicate — see the unique index below — so "update the expiry" and
+// "revoke, then share again later" are both just another POST.
+export const documentAccessGrants = pgTable(
+  "document_access_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    granteeUserId: uuid("grantee_user_id").notNull(),
+    grantedBy: uuid("granted_by").notNull(),
+    // Stamped at grant time so audit/reporting doesn't need to re-derive it by
+    // joining back through cases/users later (jurisdictions can't be reassigned
+    // after the fact anyway, so this is stable history, not a cache to invalidate).
+    crossJurisdiction: boolean("cross_jurisdiction").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("document_access_grants_document_grantee_key").on(t.documentId, t.granteeUserId),
+    index("document_access_grants_grantee_idx").on(t.granteeUserId),
+    // Lets canAccessCase's grant check hit a narrow index instead of scanning
+    // every grant for the document.
+    index("document_access_grants_active_idx")
+      .on(t.documentId, t.granteeUserId)
+      .where(sql`${t.revokedAt} is null`),
+  ],
+);

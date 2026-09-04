@@ -6,6 +6,7 @@ import {
   newVersionMetadataSchema,
   paginationSchema,
   sealSchema,
+  grantAccessSchema,
 } from "../validation/documents.schema.js";
 import * as service from "../services/documents.service.js";
 
@@ -146,4 +147,37 @@ export async function sealDocument(req, res) {
     reason,
   });
   res.json(doc);
+}
+
+// Grant/renew a read-only, time-bound, per-user access to this document. Only
+// an RBAC gate here (no resource check) — grantAccess itself decides who's
+// allowed, since that decision differs for same- vs cross-jurisdiction grants
+// in a way canAccessCase's generic jurisdiction-first check can't express.
+export async function grantDocumentAccess(req, res) {
+  const { id } = req.params;
+  await authorize({ user: req.user, action: "document:share", resource: {} });
+  const { granteeUserId, expiresAt } = parse(grantAccessSchema, req.body ?? {});
+  const grant = await service.grantAccess({
+    documentId: id,
+    actor: req.user,
+    granteeUserId,
+    expiresAt,
+    ip: req.ip,
+  });
+  res.status(201).json(grant);
+}
+
+export async function revokeDocumentAccess(req, res) {
+  const { id, userId } = req.params;
+  await authorize({ user: req.user, action: "document:share", resource: {} });
+  await service.revokeAccess({ documentId: id, actor: req.user, granteeUserId: userId, ip: req.ip });
+  res.status(204).end();
+}
+
+export async function listDocumentAccess(req, res) {
+  const { id } = req.params;
+  // Same visibility as the document itself: whoever can read it can see who
+  // else currently has access to it.
+  await authorize({ user: req.user, action: "document:read", resource: { documentId: id } });
+  res.json(await service.listAccessGrants(id));
 }

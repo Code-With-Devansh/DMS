@@ -27,4 +27,10 @@ router.get("/documents/:id/custody", ctrl.getCustody);
 // dev shim for this route only.
 router.post("/documents/:id/seal", requireAuth, requireStepUp, ctrl.sealDocument);
 
+// Access grants: explicit, read-only, time-bound, per-user sharing (in-org and
+// cross-org; may cross jurisdiction — see documents.service#grantAccess).
+router.post("/documents/:id/access", ctrl.grantDocumentAccess);
+router.get("/documents/:id/access", ctrl.listDocumentAccess);
+router.delete("/documents/:id/access/:userId", ctrl.revokeDocumentAccess);
+
 export default router;

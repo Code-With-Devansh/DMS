@@ -30,3 +30,14 @@ export const paginationSchema = z.object({
 export const sealSchema = z.object({
   reason: z.string().trim().max(2000).optional(),
 });
+
+// Body for POST /documents/:id/access. expiresAt must be in the future; the
+// service (not this schema) decides whether the actor is allowed to grant
+// THIS particular request — same-jurisdiction vs cross-jurisdiction authority
+// differ, and that depends on the case/grantee looked up server-side.
+export const grantAccessSchema = z.object({
+  granteeUserId: z.string().uuid(),
+  expiresAt: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
+    message: "expiresAt must be in the future",
+  }),
+});

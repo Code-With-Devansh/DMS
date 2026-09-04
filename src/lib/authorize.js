@@ -10,7 +10,7 @@ import { toMe } from "../mapper/user.mapper.js";
 import { forbidden } from "./errors.js";
 import userRepository from "../repositories/user.repository.js";
 import caseRepository from "../repositories/case.repository.js";
-import { getDocumentById } from "../repositories/documents.repo.js";
+import { getDocumentById, hasActiveAccessGrant } from "../repositories/documents.repo.js";
 import { db } from "../db/index.js";
 import * as pools from "../governance/pools.js";
 import { getActivePolicy } from "./abacPolicy.js";
@@ -19,6 +19,13 @@ import { getActivePolicy } from "./abacPolicy.js";
 // constants here. They now live in src/lib/abacPolicy.js (DEFAULT_POLICY) and are
 // resolved per request via getActivePolicy(), which layers any active
 // CHANGE_ABAC_POLICY override on top. With no override the values are identical.
+
+// Actions a document_access_grants row can satisfy. Deliberately NOT derived
+// from policy.permissionAliases — a grant is a security boundary (the one thing
+// that can cross jurisdiction), not a policy knob, so a CHANGE_ABAC_POLICY
+// override can't silently widen what it covers. Read-only, matching the
+// grant's own contract (see documents.service#grantAccess).
+const GRANT_ELIGIBLE_ACTIONS = new Set(["document:read", "document:list", "document:download"]);
 
 function hasPermission(permissions, action, permissionAliases) {
   const required = permissionAliases[action] ?? [action];
@@ -34,19 +41,34 @@ async function resolveCase(resource = {}) {
   return null;
 }
 
-async function canAccessCase(user, caseRow, policy) {
-  if (!caseRow || user.jurisdictionId !== caseRow.jurisdictionId) return false;
+async function canAccessCase(user, caseRow, policy, { documentId, action } = {}) {
+  if (!caseRow) return false;
   const clearanceRank = policy.clearanceRank;
   const userClearance = clearanceRank[user.clearance];
   const caseClassification = clearanceRank[caseRow.classification];
+  // Clearance is a hard floor — nothing below (not even a valid access grant)
+  // ever bypasses it.
   if (userClearance === undefined || caseClassification === undefined || userClearance < caseClassification) {
     return false;
   }
-  if (policy.elevatedCaseRoles.includes(user.role)) return true;
-  if (caseRow.createdBy === user.id) return true;
 
-  const officers = await caseRepository.listOfficers(caseRow.id);
-  return officers.some((officer) => officer.userId === user.id);
+  if (user.jurisdictionId === caseRow.jurisdictionId) {
+    if (policy.elevatedCaseRoles.includes(user.role)) return true;
+    if (caseRow.createdBy === user.id) return true;
+
+    const officers = await caseRepository.listOfficers(caseRow.id);
+    if (officers.some((officer) => officer.userId === user.id)) return true;
+  }
+
+  // The only way to reach a case outside your jurisdiction (or into one you're
+  // not otherwise on the team for): an explicit, still-active, per-document
+  // grant — and only for the read-family actions it's scoped to. See
+  // documents.service#grantAccess for who's allowed to create one.
+  if (documentId && GRANT_ELIGIBLE_ACTIONS.has(action)) {
+    return hasActiveAccessGrant(documentId, user.id);
+  }
+
+  return false;
 }
 
 export async function authorize({ user, action, resource = {} }) {
@@ -69,7 +91,7 @@ export async function authorize({ user, action, resource = {} }) {
   const isResourceAction = Boolean(resource.caseId || resource.documentId || resource.versionId);
   if (isResourceAction) {
     const caseRow = await resolveCase(resource);
-    if (!(await canAccessCase(currentUser, caseRow, policy))) {
+    if (!(await canAccessCase(currentUser, caseRow, policy, { documentId: resource.documentId, action }))) {
       throw forbidden("user is not permitted to access this case");
     }
   }

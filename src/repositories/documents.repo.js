@@ -1,6 +1,6 @@
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { documents, documentVersions } from "../db/schema/index.js";
+import { documents, documentVersions, documentAccessGrants } from "../db/schema/index.js";
 
 // ── documents ────────────────────────────────────────────────────────────────
 export async function insertDocument(tx, values) {
@@ -135,4 +135,70 @@ export async function setDocumentSealed(tx, { documentId }) {
     .where(eq(documents.id, documentId))
     .returning();
   return row ?? null;
+}
+
+// ── document access grants ──────────────────────────────────────────────────
+// Upsert on (documentId, granteeUserId): a second grant to the same person just
+// updates expiresAt (and un-revokes, if it had been revoked) rather than erroring.
+export async function upsertAccessGrant(tx, { documentId, granteeUserId, grantedBy, expiresAt, crossJurisdiction }) {
+  const [row] = await tx
+    .insert(documentAccessGrants)
+    .values({ documentId, granteeUserId, grantedBy, expiresAt, crossJurisdiction })
+    .onConflictDoUpdate({
+      target: [documentAccessGrants.documentId, documentAccessGrants.granteeUserId],
+      set: { grantedBy, expiresAt, crossJurisdiction, revokedAt: null, updatedAt: new Date() },
+    })
+    .returning();
+  return row;
+}
+
+export async function findAccessGrant(documentId, granteeUserId, tx = db) {
+  const [row] = await tx
+    .select()
+    .from(documentAccessGrants)
+    .where(and(eq(documentAccessGrants.documentId, documentId), eq(documentAccessGrants.granteeUserId, granteeUserId)))
+    .limit(1);
+  return row ?? null;
+}
+
+// The actual PDP check (authorize.js): does this user have a live grant — not
+// revoked, not expired — for this document? Narrow enough to hit
+// document_access_grants_active_idx plus a single expiresAt compare.
+export async function hasActiveAccessGrant(documentId, granteeUserId) {
+  const [row] = await db
+    .select({ id: documentAccessGrants.id })
+    .from(documentAccessGrants)
+    .where(
+      and(
+        eq(documentAccessGrants.documentId, documentId),
+        eq(documentAccessGrants.granteeUserId, granteeUserId),
+        isNull(documentAccessGrants.revokedAt),
+        gt(documentAccessGrants.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+export async function revokeAccessGrant(tx, { documentId, granteeUserId }) {
+  const [row] = await tx
+    .update(documentAccessGrants)
+    .set({ revokedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(documentAccessGrants.documentId, documentId),
+        eq(documentAccessGrants.granteeUserId, granteeUserId),
+        isNull(documentAccessGrants.revokedAt),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+export async function listAccessGrants(documentId) {
+  return db
+    .select()
+    .from(documentAccessGrants)
+    .where(and(eq(documentAccessGrants.documentId, documentId), isNull(documentAccessGrants.revokedAt)))
+    .orderBy(desc(documentAccessGrants.createdAt));
 }
