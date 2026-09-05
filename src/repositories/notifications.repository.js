@@ -2,6 +2,11 @@ import { and, count, desc, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { notifications } from "../db/schema/index.js";
 
+export async function create(values) {
+  const [notification] = await db.insert(notifications).values(values).returning();
+  return notification;
+}
+
 export async function listForUser(userId, { page, pageSize }) {
   const where = eq(notifications.userId, userId);
   const [items, [{ total }]] = await Promise.all([

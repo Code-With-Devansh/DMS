@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import config from "./config/index.js";
 import { connection } from "./jobs/connection.js";
+import { mentionNotificationWorker } from "./workers/notifications.worker.js";
 import { db } from "./db/index.js";
 import { ledger } from "./ledger/index.js";
 import * as repo from "./repositories/documents.repo.js";
@@ -71,6 +72,7 @@ async function shutdown(signal) {
   console.log(`[ledger] ${signal} received; draining worker...`);
   try {
     await worker.close();
+    await mentionNotificationWorker.close();
     await ledger.close?.();
   } catch (err) {
     console.error("[ledger] error during shutdown:", err?.message ?? err);

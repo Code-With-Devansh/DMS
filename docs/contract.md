@@ -97,7 +97,7 @@ GET  /auth/me                Res 200: Me               // current user + permiss
 // First login / MFA enrollment
 
 // user can change password till he/she has not setup mfa or login once.
-POST /auth/password          Req: { currentPassword?: string; newPassword: string }   Res 204
+POST /auth/change-password          Req: { currentPassword?: string; newPassword: string }   Res 204
 POST /auth/mfa/enroll/start  Res 200: { secret: string; otpauthUrl: string; qrDataUrl: string }
 POST /auth/mfa/enroll/verify Req: { code: string }     Res 200: { backupCodes: string[], user: Me, accessToken }
 
