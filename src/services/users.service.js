@@ -136,8 +136,8 @@ export async function deactivateUser(actor, userId, ip) {
     });
 
     // Kill live sessions after the deactivation commits. Deliberately outside the
-    // audit transaction: revokeAllForUser also writes revocation tombstones to Redis.
-    await refreshTokenRepository.revokeAllForUser(userId);
+    // audit transaction: revokeByUserId also writes revocation tombstones to Redis.
+    await refreshTokenRepository.revokeByUserId(userId);
     return publicUser(updated);
 }
 
@@ -162,7 +162,7 @@ export async function resetMfa(actor, userId, ip) {
         });
     });
 
-    await refreshTokenRepository.revokeAllForUser(userId);
+    await refreshTokenRepository.revokeByUserId(userId);
 }
 
 export async function listSessions(actor, userId) {

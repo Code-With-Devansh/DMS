@@ -130,12 +130,14 @@ export async function refresh(req, res) {
     const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId));
     if (!storedRefreshTokenHash || storedRefreshTokenHash !== hashRefreshToken(refreshToken)) {
         await service.revokeRefreshToken(userId);
+        await redisClient.del(refreshTokenKey(userId));
+        await redisClient.del(accessTokenKey(userId));
         clearAuthCookies(res);
         clearMfaCookie(res);
         throw unauthenticated("Refresh token is invalid or revoked");
     }
 
-    const { accessToken, newRefreshToken } = await service.refresh(userId, refreshToken);
+    const { accessToken, newRefreshToken } = await service.refresh(userId);
     setRefreshCookie(res, newRefreshToken);
 
     return res.status(200).json({ message: "Access token refreshed", accessToken });

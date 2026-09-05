@@ -226,23 +226,8 @@ export async function createStepUpToken(userId, code) {
 
 
 // Exchange a valid refresh token for a fresh access token (refresh stays put).
-export async function refresh(userId, prevRefreshToken) {
-    const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId));
-    const savedRefreshToken = await userRepository.getRefreshTokenByUserId(userId);
-    if (
-        !storedRefreshTokenHash ||
-        storedRefreshTokenHash !== hashRefreshToken(prevRefreshToken) ||
-        !savedRefreshToken ||
-        savedRefreshToken.length <= 0 ||
-        !savedRefreshToken[0] ||
-        savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)
-    ) {
-        await userRepository.revokeRefreshTokenForUser(userId);
-        await redisClient.del(refreshTokenKey(userId));
-        await redisClient.del(accessTokenKey(userId));
-        throw forbidden("Refresh token is invalid or revoked");
-    }
-
+export async function refresh(userId) {
+    
     const user = await userRepository.findActiveById(userId);
     if (!user) throw notFound("User not found");
 
@@ -266,7 +251,17 @@ export async function logout(userId, prevRefreshToken) {
     if (!user) throw notFound("User not found");
     const [refreshToken] = await userRepository.getRefreshTokenByUserId(userId);
     if (!refreshToken) throw notFound("Refresh token not found");
+    if (!prevRefreshToken) throw notFound("Previous refresh token not found");
+    if (refreshToken.tokenHash !== hashRefreshToken(prevRefreshToken)) {
+        throw notFound("Previous refresh token is invalid");
+    }
+    
+    await userRepository.revokeRefreshTokenForUser(userId);
+    await redisClient.del(refreshTokenKey(userId));
+    await redisClient.del(accessTokenKey(userId));
+}
 
+export async function revokeRefreshToken(userId) {
     await userRepository.revokeRefreshTokenForUser(userId);
     await redisClient.del(refreshTokenKey(userId));
     await redisClient.del(accessTokenKey(userId));

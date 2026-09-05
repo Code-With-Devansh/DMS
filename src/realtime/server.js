@@ -23,8 +23,8 @@ export async function attachRealtimeServer(httpServer, redisClient) {
   httpServer.on("upgrade", async (request, socket, head) => {
     console.log(`Incoming WebSocket upgrade request: ${request.url}`);
     try {
-      const requestUrl = new URL(request.url, "http://localhost");
-      if (requestUrl.pathname !== "/ws") {
+      const requestUrl = new URL(request.url, "http://localhost:3000");
+      if (requestUrl.pathname !== "/notifications") {
         socket.destroy();
         return;
       }

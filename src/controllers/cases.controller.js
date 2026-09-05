@@ -17,7 +17,9 @@ export async function getCasesPage(req, res) {
 
 export async function addCase(req, res) {
   await authorize({ user: req.user, action: "case:create" });
+  console.log("Request body:", req.body);
   const values = parse(createCaseSchema, req.body);
+
   res.status(201).json(await service.createCase(values, req.user.id));
 }
 

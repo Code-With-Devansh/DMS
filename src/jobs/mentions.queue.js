@@ -23,7 +23,7 @@ export async function enqueueMentionNotifications({ commentId, caseId, mentions,
         "notify-mention",
         { commentId, caseId, mentionedUserId, authorId },
         {
-          jobId: `${commentId}:${mentionedUserId}`, // idempotent on retry/redelivery
+          jobId: `${commentId}-${mentionedUserId}`, // idempotent on retry/redelivery
           attempts: 5,
           backoff: { type: "exponential", delay: 2000 },
           removeOnComplete: 1000,
