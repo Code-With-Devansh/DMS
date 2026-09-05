@@ -50,6 +50,29 @@ services:
     volumes:
       - minio_data:/data
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.0
+    container_name: DMS-opensearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      # Dev-only: disables the security plugin so the client can hit it with no
+      # auth/TLS. Never do this in prod — use OPENSEARCH_USERNAME/PASSWORD +
+      # OPENSEARCH_REJECT_UNAUTHORIZED=true against a real cluster instead.
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    networks:
+      - internal
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -66,6 +89,8 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_started
+      opensearch:
+        condition: service_healthy
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
@@ -92,6 +117,7 @@ services:
       STORAGE_SECRET_KEY: minioadmin
       STORAGE_FORCE_PATH_STYLE: "true"
       STORAGE_SSE: AES256
+      OPENSEARCH_NODES: http://opensearch:9200
       # Fabric integrity ledger (only used when LEDGER_DRIVER=fabric). Reaches the
       # WSL2 test-network peer via the host gateway; crypto is mounted read-only.
       # Endorsement is currently OR('Org1MSP.member'), so only the Org1 peer need
@@ -164,6 +190,7 @@ volumes:
   redis_data:
   node_modules:
   minio_data:
+  opensearch_data:
 
 networks:
   internal:

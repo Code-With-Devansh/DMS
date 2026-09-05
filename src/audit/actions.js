@@ -23,6 +23,8 @@ export const AuditAction = Object.freeze({
   // one; details distinguishes them + whether the grant crosses jurisdiction.
   DOCUMENT_ACCESS_GRANTED: "DOCUMENT_ACCESS_GRANTED",
   DOCUMENT_ACCESS_REVOKED: "DOCUMENT_ACCESS_REVOKED",
+  VERSION_PROCESSED: "VERSION_PROCESSED",
+  VERSION_PROCESSING_FAILED: "VERSION_PROCESSING_FAILED",
 
   // ---- Governance / admin-hierarchy subsystem (GOVERNANCE.md) ----
   // Sudo proposal lifecycle: filed -> each approval/objection -> executed.
