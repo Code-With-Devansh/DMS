@@ -25,6 +25,15 @@ import { POLICY_KEYS } from "../lib/abacPolicy.js";
 import { orgRepository } from "../repositories/reference.repository.js";
 import userRepository from "../repositories/user.repository.js";
 import { badRequest, notFound } from "../lib/errors.js";
+import { role as roleEnum } from "../db/schema/index.js";
+
+// Roles REMOVE_ORG_ADMIN may demote a user to. Any role except the two admin
+// tiers — this action is a demotion out of ORG_ADMIN, not a lateral move into
+// another admin tier (that's what APPOINT_/REMOVE_SYSTEM_ADMIN and a fresh
+// APPOINT_ORG_ADMIN proposal are for).
+export const DEMOTABLE_ROLES = Object.freeze(
+  roleEnum.enumValues.filter((r) => r !== "ORG_ADMIN" && r !== "SYSTEM_ADMIN"),
+);
 
 function requireFields(payload, fields) {
   for (const f of fields) {
@@ -101,12 +110,23 @@ export const SUDO_ACTIONS = Object.freeze({
   },
 
   // Remove a user from an org's ORG_ADMIN pool. Same quorum + co-sign as appoint.
+  // Removal also demotes the user's `role` (see proposals.service#executeProposal)
+  // away from ORG_ADMIN, so the caller must say what they demote to — there's no
+  // implicit "restore prior role", since role is flipped at appoint time, not
+  // snapshotted (see APPOINT_ORG_ADMIN).
   REMOVE_ORG_ADMIN: {
     supported: true,
     crossTier: "SECURITY_ADMIN",
     delayHours: 0,
     targetPool: (p) => ({ poolType: "ORG_ADMIN", org: p.org }),
-    validatePayload: (p) => requireFields(p, ["org", "userId"]),
+    validatePayload: (p) => {
+      requireFields(p, ["org", "userId", "demotedRole"]);
+      if (!DEMOTABLE_ROLES.includes(p.demotedRole)) {
+        throw new Error(
+          `payload.demotedRole must be one of: ${DEMOTABLE_ROLES.join(", ")}`,
+        );
+      }
+    },
   },
 
   // Change a pool's quorum threshold k. Quorum: the affected pool; co-sign: a

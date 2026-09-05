@@ -389,6 +389,15 @@ export async function executeProposal(actorId, proposalId, ip) {
       }
       await pools.addMember(tx, targetPool.id, payload.userId);
       await pools.setThreshold(tx, targetPool.id, { k: targetPool.k, m: targetPool.m + 1 });
+
+      // ORG_ADMIN pool membership doubles as the user's operational role (RBAC
+      // reads users.role, not pool membership — see abacPolicy.js). Only the
+      // org tier is flipped here; SYSTEM_ADMIN appointment intentionally does
+      // NOT touch role (undecided/out of scope). No-op if already ORG_ADMIN so
+      // a re-appoint of an existing admin can't clobber anything.
+      if (proposal.actionType === "APPOINT_ORG_ADMIN" && target.role !== "ORG_ADMIN") {
+        await tx.update(users).set({ role: "ORG_ADMIN" }).where(eq(users.id, payload.userId));
+      }
     } else if (proposal.actionType === "REMOVE_ORG_ADMIN" || proposal.actionType === "REMOVE_SYSTEM_ADMIN") {
       const newM = targetPool.m - 1;
       if (newM < 2 || targetPool.k > newM) {
@@ -399,6 +408,15 @@ export async function executeProposal(actorId, proposalId, ip) {
       const removed = await pools.removeMember(tx, targetPool.id, payload.userId);
       if (!removed) throw notFound("user is not a member of this pool");
       await pools.setThreshold(tx, targetPool.id, { k: targetPool.k, m: newM });
+
+      // Mirror of the appoint-time flip above: removal from the ORG_ADMIN pool
+      // demotes the user's role to whatever the proposer specified (validated
+      // against DEMOTABLE_ROLES at file time — see sudoActions.js). There is no
+      // "previous role" to restore to; role was overwritten at appoint time,
+      // not snapshotted, so the demotion target must always be explicit.
+      if (proposal.actionType === "REMOVE_ORG_ADMIN") {
+        await tx.update(users).set({ role: payload.demotedRole }).where(eq(users.id, payload.userId));
+      }
     } else if (proposal.actionType === "CHANGE_POOL_THRESHOLD") {
       try {
         await pools.setThreshold(tx, targetPool.id, { k: payload.k, m: targetPool.m });
@@ -471,6 +489,11 @@ async function onboardOrg(tx, payload) {
   const pool = await pools.createPool(tx, { poolType: "ORG_ADMIN", org: payload.org, k, m });
   for (const uid of memberIds) {
     await pools.addMember(tx, pool.id, uid);
+    // Same role-flip as APPOINT_ORG_ADMIN — initial roster members become
+    // operational ORG_ADMINs, not just pool signers. assertOnboardRoster above
+    // already confirmed every member is ACTIVE, so no re-fetch/guard needed
+    // beyond the plain update.
+    await tx.update(users).set({ role: "ORG_ADMIN" }).where(eq(users.id, uid));
   }
   return pool;
 }
