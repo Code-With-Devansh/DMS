@@ -4,7 +4,7 @@
 import { verifyAccessToken, verifyStepUpToken } from "../lib/tokens.js";
 import { stepUpRequired, unauthenticated } from "../lib/errors.js";
 import redisClient from "../config/redis.js";
-import { hashAccessToken } from "../utils/hashToken.js";
+import { accessTokenKey, hashAccessToken } from "../utils/hashToken.js";
 
 
 export async function requireAuth(req, res, next) {
@@ -18,15 +18,13 @@ export async function requireAuth(req, res, next) {
   const token = tokenFromHeader;
   if (!token) return next(unauthenticated("Authentication required"));
 
-  const isRevoked = await redisClient.get(`${hashAccessToken(token)}`);
-
-  if (isRevoked == "revoked") {
-    return next(unauthenticated("Access token has been revoked"));
-  }
-
-
   try {
     const payload = verifyAccessToken(token);
+    const storedTokenHash = await redisClient.get(accessTokenKey(payload.sub));
+    if (!storedTokenHash || storedTokenHash !== hashAccessToken(token)) {
+      return next(unauthenticated("Access token is invalid or revoked"));
+    }
+
     req.user = {
       id: payload.sub,
       username: payload.username,

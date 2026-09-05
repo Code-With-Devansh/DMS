@@ -17,7 +17,13 @@ import {
 
 import userRepository from "../repositories/user.repository.js";
 import redisClient from "../config/redis.js";
-import { hashRefreshToken, hashActivationToken, hashAccessToken } from "../utils/hashToken.js";
+import {
+    hashRefreshToken,
+    hashActivationToken,
+    hashAccessToken,
+    accessTokenKey,
+    refreshTokenKey,
+} from "../utils/hashToken.js";
 import * as activationTokenRepo from "../repositories/activation-token.repository.js";
 import { activation_tokens, users } from "../db/schema/index.js";
 
@@ -66,27 +72,27 @@ export async function changePassword(userId, { oldPassword, newPassword }) {
 export async function activateAccount({ activationToken, newPassword }) {
     const tokenHash = hashActivationToken(activationToken);
     await db.transaction(async (tx) => {
-    const [claimedToken] = await tx
-        .update(activation_tokens)
-        .set({ used: true })
-        .where(
-            and(
-                eq(activation_tokens.token, tokenHash),
-                eq(activation_tokens.used, false)
+        const [claimedToken] = await tx
+            .update(activation_tokens)
+            .set({ used: true })
+            .where(
+                and(
+                    eq(activation_tokens.token, tokenHash),
+                    eq(activation_tokens.used, false)
+                )
             )
-        )
-        .returning();
+            .returning();
 
-    if (!claimedToken) {
-        throw badRequest("Invalid or already-used activation token.");
-    }
+        if (!claimedToken) {
+            throw badRequest("Invalid or already-used activation token.");
+        }
 
-    const passwordHash = await argon2.hash(newPassword);
-    await tx
-        .update(users)
-        .set({ hashedPassword: passwordHash })
-        .where(eq(users.id, claimedToken.userId));
-});
+        const passwordHash = await argon2.hash(newPassword);
+        await tx
+            .update(users)
+            .set({ hashedPassword: passwordHash })
+            .where(eq(users.id, claimedToken.userId));
+    });
 }
 
 // Begin first-time MFA enrollment: generate a TOTP secret + QR for the
@@ -138,7 +144,7 @@ export async function verifyMfaEnrollment(userId, code) {
 
 
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
-    const accessToken = signAccessToken({ sub: user.id, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: user.id, username: user.username, role: user.role });
     await userRepository.completeMfaEnrollment({
         userId,
         tempSecret: user.mfaTempSecret,
@@ -147,12 +153,12 @@ export async function verifyMfaEnrollment(userId, code) {
     });
     const freshUser = await userRepository.findById(userId);
 
-    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now()/1000;
-    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now()/1000;
-    redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
+    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now() / 1000;
+    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now() / 1000;
+    await redisClient.set(refreshTokenKey(userId), hashRefreshToken(refreshToken), {
         "EX": Math.round(refreshExpiryTime)
     });
-    redisClient.set(`${hashAccessToken(accessToken)}`, "active", {
+    await redisClient.set(accessTokenKey(userId), hashAccessToken(accessToken), {
         "EX": Math.round(accessExpiryTime)
     });
 
@@ -172,18 +178,18 @@ export async function verifyMfa(userId, code) {
         encoding: "base32", window: 1,
     });
     if (!verified) throw unauthenticated("Invalid MFA code");
-    const accessToken = signAccessToken({ sub: user.id, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: user.id, username: user.username, role: user.role });
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
     await userRepository.completeMfaLogin({ userId, refreshToken });
 
-    
-    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now()/1000;
-    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now()/1000;
 
-    redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
+    const accessExpiryTime = getAccessExpiryTime(accessToken) - Date.now() / 1000;
+    const refreshExpiryTime = getRefreshExpiryTime(refreshToken) - Date.now() / 1000;
+
+    await redisClient.set(refreshTokenKey(userId), hashRefreshToken(refreshToken), {
         "EX": Math.round(refreshExpiryTime)
     });
-    redisClient.set(`${hashAccessToken(accessToken)}`, "active", {
+    await redisClient.set(accessTokenKey(userId), hashAccessToken(accessToken), {
         "EX": Math.round(accessExpiryTime)
     });
 
@@ -220,62 +226,52 @@ export async function createStepUpToken(userId, code) {
 
 
 // Exchange a valid refresh token for a fresh access token (refresh stays put).
-export async function refresh(userId, prevAccessToken, prevRefreshToken) {
-    if (prevAccessToken) {
-        redisClient.set(`${hashAccessToken(prevAccessToken)}`, "revoked", {
-            "EX": Math.round(getAccessExpiryTime(prevAccessToken) - Date.now() / 1000)
-        });
-    }
-
-    if (prevRefreshToken) {
-        const isRevoked = await redisClient.get(`${hashRefreshToken(prevRefreshToken)}`);
-        if (isRevoked == "revoked") {
-            await userRepository.revokeRefreshTokenForUser(userId);
-            throw forbidden("Refresh token has been revoked");
-        } else {
-
-            const savedRefreshToken = await userRepository.getRefreshTokenByUserId(userId);
-            if (!savedRefreshToken || savedRefreshToken.length<=0 || savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)) {
-                await userRepository.revokeRefreshTokenForUser(userId);
-                throw forbidden("Refresh token is invalid");
-            }
-
-            redisClient.set(`${hashRefreshToken(prevRefreshToken)}`, "revoked", {
-                "EX": Math.round((getRefreshExpiryTime(prevRefreshToken) - Date.now() / 1000))
-            });
-        }
-    } else {
-        throw badRequest("Refresh token is required");
+export async function refresh(userId, prevRefreshToken) {
+    const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId));
+    const savedRefreshToken = await userRepository.getRefreshTokenByUserId(userId);
+    if (
+        !storedRefreshTokenHash ||
+        storedRefreshTokenHash !== hashRefreshToken(prevRefreshToken) ||
+        !savedRefreshToken ||
+        savedRefreshToken.length <= 0 ||
+        !savedRefreshToken[0] ||
+        savedRefreshToken[0].tokenHash !== hashRefreshToken(prevRefreshToken)
+    ) {
+        await userRepository.revokeRefreshTokenForUser(userId);
+        await redisClient.del(refreshTokenKey(userId));
+        await redisClient.del(accessTokenKey(userId));
+        throw forbidden("Refresh token is invalid or revoked");
     }
 
     const user = await userRepository.findActiveById(userId);
     if (!user) throw notFound("User not found");
 
 
-    const accessToken = signAccessToken({ sub: userId, username: user.username, role : user.role });
+    const accessToken = signAccessToken({ sub: userId, username: user.username, role: user.role });
     const refreshToken = signRefreshToken({ sub: userId, username: user.username });
 
     await userRepository.addRefreshToken({ userId, refreshToken });
 
-    redisClient.set(`${hashRefreshToken(refreshToken)}`, "active", {
-        "EX" : Math.round(getRefreshExpiryTime(refreshToken) - Date.now() / 1000)
+    await redisClient.set(refreshTokenKey(userId), hashRefreshToken(refreshToken), {
+        "EX": Math.round(getRefreshExpiryTime(refreshToken) - Date.now() / 1000)
+    });
+    await redisClient.set(accessTokenKey(userId), hashAccessToken(accessToken), {
+        "EX": Math.round(getAccessExpiryTime(accessToken) - Date.now() / 1000)
     });
     return { accessToken, newRefreshToken: refreshToken };
 }
 
 export async function logout(userId, prevRefreshToken) {
-
     const user = await userRepository.findById(userId);
     if (!user) throw notFound("User not found");
     const [refreshToken] = await userRepository.getRefreshTokenByUserId(userId);
     if (!refreshToken) throw notFound("Refresh token not found");
 
-    redisClient.set(`${hashRefreshToken(prevRefreshToken)}`, "revoked", {
-        "EX": Math.round((getRefreshExpiryTime(prevRefreshToken) - Date.now() / 1000))
-    });
-
     await userRepository.revokeRefreshTokenForUser(userId);
+    await redisClient.del(refreshTokenKey(userId));
+    await redisClient.del(accessTokenKey(userId));
 }
+
 
 // Current-user profile for GET /me (id comes from the verified access token).
 export async function getMe(userId) {
