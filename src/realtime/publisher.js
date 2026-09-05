@@ -17,3 +17,8 @@ export async function publishCommentEvent({ type, caseId, documentId, commentId 
   if (documentId) channels.push(`document:${documentId}`);
   await Promise.all(channels.map((channel) => redis.publish(channel, payload)));
 }
+
+export async function publishNotificationEvent(notification) {
+  const payload = JSON.stringify({ type: "notification.created", notification, at: Date.now() });
+  await redis.publish(`user:${notification.userId}:notifications`, payload);
+}

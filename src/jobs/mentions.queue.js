@@ -15,6 +15,7 @@ export const mentionsQueue = new Queue("mention-notifications", { connection });
  * comments.service) so a broker hiccup never fails the comment itself.
  */
 export async function enqueueMentionNotifications({ commentId, caseId, mentions, authorId }) {
+  console.log(`Enqueuing mention notifications for comment ${commentId} in case ${caseId}:`, mentions);
   if (!mentions?.length) return [];
   return Promise.all(
     mentions.map((mentionedUserId) =>

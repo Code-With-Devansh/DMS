@@ -12,6 +12,24 @@ function hashAccessToken(token) {
     return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-export { hashRefreshToken, hashActivationToken, hashAccessToken }; 
+function hashUserId(userId) {
+    return crypto.createHash("sha256").update(String(userId)).digest("hex");
+}
+
+function accessTokenKey(userId) {
+    return `access:${hashUserId(userId)}`;
+}
+
+function refreshTokenKey(userId) {
+    return `refresh:${hashUserId(userId)}`;
+}
+
+export {
+    hashRefreshToken,
+    hashActivationToken,
+    hashAccessToken,
+    accessTokenKey,
+    refreshTokenKey,
+};
 
 

@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from "node:http";
 import authRouter from "./routes/auth.route.js"
 import cookieParser from 'cookie-parser';
 import cors from 'cors'
@@ -16,6 +17,8 @@ import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
 import { requireAuth } from './middlewares/auth.js';
 import { ensureDocumentsIndex } from "./search/documents.index.js";
+import { attachRealtimeServer } from "./realtime/server.js";
+import redisClient from "./config/redis.js";
 
 const app = express();
 const port = 3000;
@@ -63,7 +66,9 @@ async function start() {
   await storage.ensureBucket();
   // Idempotent — creates the OpenSearch index on first boot, no-ops after.
   await ensureDocumentsIndex();
-  app.listen(port, () => {
+  const server = createServer(app);
+  await attachRealtimeServer(server, redisClient);
+  server.listen(port, () => {
     console.log(`DMS app listening on port ${port}`);
   });
 }
