@@ -20,7 +20,6 @@ export const mentionNotificationWorker = new Worker("mention-notifications", asy
 
 }, {
     connection,
-    concurrency: 4, // Adjust concurrency as needed
 });
 
 
@@ -35,3 +34,7 @@ mentionNotificationWorker.on('failed', (job, error) => {
 mentionNotificationWorker.on('error', (error) => {
   console.error("Mention notification worker error:", error);
 });
+
+
+
+console.log("Mention notification worker started..");

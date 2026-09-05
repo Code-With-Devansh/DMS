@@ -63,6 +63,11 @@ class RefreshTokenRepository {
             await redisClient.del(refreshTokenKey(refreshToken.userId));
         }
     }
+
+    async revokeByUserId(userId) {
+        await db.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+    }
+    
 }
 
 export default new RefreshTokenRepository();

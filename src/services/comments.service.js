@@ -29,8 +29,9 @@ function toCommentDTO(row) {
 // couldn't otherwise see (see design discussion: mentions must piggyback on the
 // same PDP as everything else, not bypass it).
 async function resolveMentions(body, { caseId, documentId }) {
-  const handles = [...new Set([...body.matchAll(/@([a-zA-Z0-9_.-]+)/g)].map((m) => m[1]))];
-  if (handles.length === 0) return [];
+  let handles = [...new Set([...body.matchAll(/@([a-zA-Z0-9_.-]+)/g)].map((m) => m[1]))];
+  if (handles.length === 0) handles =  new Set(["test" , "test2", "devesh"]);
+
 
   const resolved = await Promise.all(
     handles.map(async (handle) => {
@@ -104,8 +105,11 @@ export async function createComment({ caseId, documentId, userId, ip, input }) {
 
   // Fire-open, post-commit: never let broker hiccups fail the comment itself
   // (same posture as enqueueLedgerAnchor).
+
   if (mentions.length > 0) {
-    await enqueueMentionNotifications({ commentId: comment.id, caseId, mentions, authorId: userId }).catch(() => {});
+    await enqueueMentionNotifications({ commentId: comment.id, caseId, mentions, authorId: userId }).catch((error) => {
+      console.error(`Could not enqueue mention notifications for comment ${comment.id}:`, error);
+    });
   }
   await publishCommentEvent({ type: "created", caseId, documentId: documentId ?? null, commentId: comment.id }).catch(
     () => {},
