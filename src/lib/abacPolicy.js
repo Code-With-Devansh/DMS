@@ -32,6 +32,14 @@ export const DEFAULT_POLICY = Object.freeze({
     SECRET: 3,
   },
   elevatedCaseRoles: ["SUPERVISOR", "ORG_ADMIN", "SYSTEM_ADMIN"],
+  // Roles that bypass the jurisdiction boundary entirely — not just the
+  // "elevated within your own jurisdiction" carve-out above, but the ability
+  // to create cases in, and be granted standing case-access to, ANY
+  // jurisdiction. Distinct from elevatedCaseRoles: the latter still gates on
+  // user.jurisdictionId === caseRow.jurisdictionId (see authorize.js). This
+  // list intentionally starts narrow (system-tier only, not ORG_ADMIN)
+  // pending a governance decision to widen it via CHANGE_ABAC_POLICY.
+  crossJurisdictionRoles: ["SYSTEM_ADMIN"],
   permissionAliases: {
     "user:read": ["user:read", "user:manage"],
     "user:manage": ["user:manage"],
@@ -94,6 +102,7 @@ export const DEFAULT_POLICY = Object.freeze({
 export const POLICY_KEYS = Object.freeze([
   "clearanceRank",
   "elevatedCaseRoles",
+  "crossJurisdictionRoles",
   "permissionAliases",
   "permissionsByRole",
 ]);
@@ -107,6 +116,7 @@ export function mergePolicy(base, override) {
   return {
     clearanceRank: { ...base.clearanceRank, ...(override.clearanceRank ?? {}) },
     elevatedCaseRoles: override.elevatedCaseRoles ?? base.elevatedCaseRoles,
+    crossJurisdictionRoles: override.crossJurisdictionRoles ?? base.crossJurisdictionRoles,
     permissionAliases: { ...base.permissionAliases, ...(override.permissionAliases ?? {}) },
     permissionsByRole: { ...base.permissionsByRole, ...(override.permissionsByRole ?? {}) },
   };

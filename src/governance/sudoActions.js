@@ -22,6 +22,9 @@
 
 import config from "../config/index.js";
 import { POLICY_KEYS } from "../lib/abacPolicy.js";
+import { orgRepository } from "../repositories/reference.repository.js";
+import userRepository from "../repositories/user.repository.js";
+import { badRequest, notFound } from "../lib/errors.js";
 
 function requireFields(payload, fields) {
   for (const f of fields) {
@@ -32,7 +35,7 @@ function requireFields(payload, fields) {
   }
 }
 
-// Shape guard for a CHANGE_ABAC_POLICY override document. Only the four known
+// Shape guard for a CHANGE_ABAC_POLICY override document. Only the known
 // top-level keys are allowed (unknown keys ⇒ reject, not silently ignore), and
 // each must carry the expected container type. The VALUES are trusted structurally
 // (they're merged verbatim) — this is a shape gate, not a semantic validator.
@@ -53,8 +56,36 @@ function validateAbacPolicy(policy) {
       throw new Error(`payload.policy.${k} must be an object`);
     }
   }
-  if (policy.elevatedCaseRoles !== undefined && !Array.isArray(policy.elevatedCaseRoles)) {
-    throw new Error("payload.policy.elevatedCaseRoles must be an array");
+  const arrayKeys = ["elevatedCaseRoles", "crossJurisdictionRoles"];
+  for (const k of arrayKeys) {
+    if (policy[k] !== undefined && !Array.isArray(policy[k])) {
+      throw new Error(`payload.policy.${k} must be an array`);
+    }
+  }
+}
+
+// Shared DB-aware guard for ONBOARD_ORG: `payload.org` must already exist (it
+// is created up front via the reference:manage /orgs endpoint — ONBOARD_ORG
+// never creates or names an org itself, only stands up its ORG_ADMIN pool),
+// and every proposed member must already be an active user tagged to that
+// same org. Called from fileProposal at file time (fails fast for the
+// proposer) AND from the ONBOARD_ORG execute helper — file time is a courtesy
+// check against state *at submission*; nothing stops the org or a member's
+// orgId changing during the quorum/delay window before execute actually runs,
+// so execute-time re-validation is the real enforcement point.
+export async function assertOnboardRoster(payload) {
+  const org = await orgRepository.findById(payload.org);
+  if (!org) throw notFound(`org '${payload.org}' does not exist`);
+
+  const memberIds = [...new Set(payload.members)];
+  for (const uid of memberIds) {
+    const u = await userRepository.findById(uid);
+    if (!u || u.status !== "ACTIVE") {
+      throw badRequest(`member ${uid} is not an active user`);
+    }
+    if (u.orgId !== payload.org) {
+      throw badRequest(`member ${uid} does not belong to org '${payload.org}'`);
+    }
   }
 }
 
@@ -131,6 +162,9 @@ export const SUDO_ACTIONS = Object.freeze({
         throw new Error("payload.k must be an integer");
       }
     },
+    // DB-aware, run once at file time in addition to execute time — see
+    // assertOnboardRoster above.
+    validateAtFileTime: (p) => assertOnboardRoster(p),
   },
 
   // ── Inverted quorum: Security Admin is PRIMARY, System Admins acknowledge

@@ -1,6 +1,7 @@
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 import caseRepository from "../repositories/case.repository.js";
 import userRepository from "../repositories/user.repository.js";
+import { getActivePolicy } from "../lib/abacPolicy.js";
 
 const clearanceRank = { PUBLIC: 0, RESTRICTED: 1, CONFIDENTIAL: 2, SECRET: 3 };
 
@@ -48,11 +49,14 @@ async function toCase(row) {
 
 export async function listCases(filters) {
   const user = await userRepository.findById(filters.userId);
+  const policy = await getActivePolicy();
+  const crossJurisdiction = Boolean(user && policy.crossJurisdictionRoles.includes(user.role));
   const result = await caseRepository.list({
     ...filters,
     userRole: user?.role,
     userClearance: user?.clearance,
-    jurisdictionId: user?.jurisdictionId,
+    // Bypass roles see cases across all jurisdictions, not just their own.
+    jurisdictionId: crossJurisdiction ? undefined : user?.jurisdictionId,
   });
   const documentCounts = await Promise.all(
     result.rows.map((row) => caseRepository.countDocuments(row.id)),
@@ -67,10 +71,12 @@ export async function listCases(filters) {
 
 export async function createCase(values, userId) {
   const user = await userRepository.findById(userId);
+  const policy = await getActivePolicy();
+  const crossJurisdiction = Boolean(user && policy.crossJurisdictionRoles.includes(user.role));
   if (
     !user ||
     user.status !== "ACTIVE" ||
-    user.jurisdictionId !== values.jurisdictionId ||
+    (!crossJurisdiction && user.jurisdictionId !== values.jurisdictionId) ||
     clearanceRank[user.clearance] === undefined ||
     clearanceRank[values.classification] === undefined ||
     clearanceRank[user.clearance] < clearanceRank[values.classification]

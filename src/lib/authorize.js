@@ -52,6 +52,13 @@ async function canAccessCase(user, caseRow, policy, { documentId, action } = {})
     return false;
   }
 
+  // System-tier bypass: crossJurisdictionRoles skip the jurisdiction boundary
+  // entirely (clearance above still applies as a hard floor). Distinct from
+  // elevatedCaseRoles below, which only auto-approves within the user's own
+  // jurisdiction — everyone else still needs an explicit access grant to
+  // cross into another jurisdiction's case.
+  if (policy.crossJurisdictionRoles.includes(user.role)) return true;
+
   if (user.jurisdictionId === caseRow.jurisdictionId) {
     if (policy.elevatedCaseRoles.includes(user.role)) return true;
     if (caseRow.createdBy === user.id) return true;

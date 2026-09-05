@@ -72,13 +72,3 @@ start().catch((err) => {
   console.error("[startup] failed to start:", err);
   process.exit(1);
 });
-
-
-import argon2 from "argon2";
-
-console.log("Hashing password 'Test@12345' with argon2...");
-argon2.hash("Test@12345")
-  .then(hash => {
-    console.log("Hashed password:", hash);
-  }
-);

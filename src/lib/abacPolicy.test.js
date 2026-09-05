@@ -9,6 +9,7 @@ test("no override yields the defaults verbatim (identity)", () => {
   assert.deepEqual(merged.clearanceRank, DEFAULT_POLICY.clearanceRank);
   assert.deepEqual(merged.permissionsByRole, DEFAULT_POLICY.permissionsByRole);
   assert.deepEqual(merged.elevatedCaseRoles, DEFAULT_POLICY.elevatedCaseRoles);
+  assert.deepEqual(merged.crossJurisdictionRoles, DEFAULT_POLICY.crossJurisdictionRoles);
   assert.deepEqual(merged.permissionAliases, DEFAULT_POLICY.permissionAliases);
 });
 
@@ -31,9 +32,15 @@ test("elevatedCaseRoles replaces wholesale when present", () => {
   assert.deepEqual(merged.elevatedCaseRoles, ["SYSTEM_ADMIN"]);
 });
 
-test("POLICY_KEYS is exactly the four overlay keys", () => {
+test("crossJurisdictionRoles replaces wholesale when present", () => {
+  const merged = mergePolicy(DEFAULT_POLICY, { crossJurisdictionRoles: ["SYSTEM_ADMIN", "ORG_ADMIN"] });
+  assert.deepEqual(merged.crossJurisdictionRoles, ["SYSTEM_ADMIN", "ORG_ADMIN"]);
+});
+
+test("POLICY_KEYS is exactly the five overlay keys", () => {
   assert.deepEqual([...POLICY_KEYS].sort(), [
     "clearanceRank",
+    "crossJurisdictionRoles",
     "elevatedCaseRoles",
     "permissionAliases",
     "permissionsByRole",
