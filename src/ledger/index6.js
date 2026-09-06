@@ -8,8 +8,8 @@ import { createFabricLedgerService } from "./fabricLedger.js";
 // config.ledger.driver so swapping the in-memory stub for the real Fabric client
 // is an env change, not a code change.
 
-/** @returns {Promise<import("./types.js").LedgerService>} */
-async function buildLedger() {
+/** @returns {import("./types.js").LedgerService} */
+function buildLedger() {
   switch (config.ledger.driver) {
     case "memory":
       return createInMemoryLedgerService({ mode: config.ledger.stubMode });
@@ -23,4 +23,4 @@ async function buildLedger() {
   }
 }
 
-export const ledger = await buildLedger();
+export const ledger = buildLedger();

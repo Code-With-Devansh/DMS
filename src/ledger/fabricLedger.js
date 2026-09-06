@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { createPrivateKey } from "node:crypto";
+import { promises as dns } from "node:dns";
 
 // FabricLedgerService — the real @hyperledger/fabric-gateway client behind
 // LEDGER_DRIVER=fabric. It implements the exact same 6-method LedgerService seam
@@ -94,7 +95,31 @@ export function isAlreadySealed(err) {
  * }} cfg
  * @returns {import("./types.js").LedgerService}
  */
-export function createFabricLedgerService(cfg) {
+
+// Resolves a "host:port" endpoint to "ipv4literal:port", using an EXPLICIT
+// family:4 lookup rather than the general dual-stack lookup grpc-js's own
+// resolver performs — see the long comment inside createFabricLedgerService
+// for why the dual-stack path can miss a real, reachable IPv4 address
+// entirely on Docker Desktop's WSL2 mirrored network mode. A bare IP
+// literal (no hostname to resolve) is returned unchanged.
+async function resolveIPv4Endpoint(endpoint) {
+  const lastColon = endpoint.lastIndexOf(":");
+  if (lastColon === -1) {
+    throw new Error(`fabric ledger: invalid endpoint "${endpoint}", expected "host:port"`);
+  }
+  const host = endpoint.slice(0, lastColon);
+  const port = endpoint.slice(lastColon + 1);
+
+  // Already a literal IPv4 address — nothing to resolve.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return endpoint;
+  }
+
+  const { address } = await dns.lookup(host, { family: 4 });
+  return `${address}:${port}`;
+}
+
+export async function createFabricLedgerService(cfg) {
   const grpc = require("@grpc/grpc-js");
   const { connect, signers } = require("@hyperledger/fabric-gateway");
 
@@ -107,9 +132,31 @@ export function createFabricLedgerService(cfg) {
   // gRPC channel to the peer. The cert SAN is peer0.org1.example.com but in the
   // containerize+bridge model we dial host.docker.internal:7051 — so override the
   // TLS authority (SNI) to the SAN or the handshake fails hostname verification.
+  //
+  // IMPORTANT: on Docker Desktop's WSL2 "mirrored" network mode,
+  // host.docker.internal's DUAL-STACK resolution (dns.lookup(host, {all:true}),
+  // which is what grpc-js's resolver uses) returns ONLY an IPv6 ULA address
+  // (fdc4:.../8) from the container's /etc/hosts — that address is not
+  // actually routable and fails with ENETUNREACH. A real IPv4 address DOES
+  // exist and IS reachable, but only surfaces via an explicit IPv4-only
+  // lookup (Docker's embedded DNS resolver answers it; the general
+  // dual-stack path never returns it, apparently short-circuiting on the
+  // /etc/hosts-only IPv6 entry). Confirmed directly against a running
+  // container: `getent hosts host.docker.internal` shows only the IPv6
+  // address, but `net.connect({family: 4})` to the same hostname succeeds.
+  //
+  // Reordering results (dns.setDefaultResultOrder) does NOT fix this, since
+  // the IPv4 address is never in the result set to begin with — only an
+  // explicit family:4 lookup surfaces it. So: resolve the peer/orderer
+  // hostname to its real IPv4 literal ourselves, once, at startup, and hand
+  // grpc.Client that literal IP directly. TLS verification is unaffected
+  // since grpc.ssl_target_name_override below still targets the cert's SAN
+  // regardless of which literal address we actually dial.
+  const peerAddress = await resolveIPv4Endpoint(cfg.peerEndpoint);
+
   const tlsRootCert = readFileSync(cfg.tlsRootCertPath);
   const tlsCredentials = grpc.credentials.createSsl(tlsRootCert);
-  const client = new grpc.Client(cfg.peerEndpoint, tlsCredentials, {
+  const client = new grpc.Client(peerAddress, tlsCredentials, {
     "grpc.ssl_target_name_override": cfg.peerHostAlias,
   });
 
