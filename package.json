@@ -9,7 +9,9 @@
     "migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "start": "docker compose up --build"
+    "start": "docker compose up --build",
+    "fabric:up": "bash fabric/scripts/bootstrap.sh",
+    "fabric:down": "bash fabric/scripts/teardown.sh"
   },
   "keywords": [],
   "author": "",
