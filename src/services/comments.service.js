@@ -30,7 +30,6 @@ function toCommentDTO(row) {
 // same PDP as everything else, not bypass it).
 async function resolveMentions(body, { caseId, documentId }) {
   let handles = [...new Set([...body.matchAll(/@([a-zA-Z0-9_.-]+)/g)].map((m) => m[1]))];
-  if (handles.length === 0) handles =  new Set(["test" , "test2", "devesh"]);
 
 
   const resolved = await Promise.all(

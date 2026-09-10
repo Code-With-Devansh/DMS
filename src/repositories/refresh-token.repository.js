@@ -67,6 +67,15 @@ class RefreshTokenRepository {
     async revokeByUserId(userId) {
         await db.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
     }
+
+    async listActiveForUser(userId) {
+        const tokens = await db
+            .select()
+            .from(refreshTokens)
+            .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+        return tokens;
+    }
+    
     
 }
 
