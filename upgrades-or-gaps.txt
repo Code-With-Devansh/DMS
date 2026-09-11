@@ -1,3 +1,5 @@
+0.1 search is implemented, the next step is to get the location of the searched text. (if possible).
+
 0. onboard org changes user role to admin and they lose some powers.
 1. Seal does not gate on integrity. The document above sealed while integrityStatus:TAMPERED. That matches the plan (seal checks anchoring, not byte-integrity), but it means a tampered document can still be sealed. If seal should require VERIFIED first, that's a small, well-contained follow-up.
 
