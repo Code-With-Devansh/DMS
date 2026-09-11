@@ -142,6 +142,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      minio:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
@@ -150,11 +154,23 @@ services:
     networks:
       - internal
     # No ports: the worker is a background consumer, not an HTTP service. It
-    # reaches Postgres + Redis over the internal network. It does NOT touch object
-    # storage (its import graph excludes src/storage), so no MinIO env is needed.
+    # reaches Postgres + Redis over the internal network, plus MinIO (document
+    # bytes for the processing pipeline) and OpenSearch (indexing) — same
+    # internal-only overrides as the api service, minus STORAGE_PUBLIC_ENDPOINT
+    # since the worker never presigns a browser-facing URL.
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://redis:6379
+
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: dms-documents
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_SSE: AES256
+
+      OPENSEARCH_NODES: http://opensearch:9200
       # LEDGER_DRIVER is intentionally NOT set here so it comes from .env (like the
       # api): LEDGER_DRIVER=fabric in .env then enables the real ledger for BOTH
       # the API and this worker at once. The worker is the process that anchors, so

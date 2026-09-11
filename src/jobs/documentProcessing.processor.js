@@ -1,11 +1,17 @@
-import pdfParse from "pdf-parse/lib/pdf-parse.js"; // NOT "pdf-parse" — that package's
-  // top-level index.js runs a debug/self-test harness whenever module.parent is
-  // unset, which is always true when it's loaded via ESM import(); importing the
-  // lib file directly skips that entirely.
+import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import { classifyFile, FileCategory } from "./fileTypes.js";
 
+async function virusScan(file) {
+  // virus scan
+}
 
+// file.body (storage.getObject's Readable) is single-use and each extraction
+// library below wants a Buffer, not a stream — so every real extraction path
+// buffers it first. Fine for the "modest evidence files" this system targets
+// today (documents.service.js already buffers whole uploads the same way for
+// hashing); would need to switch to streaming parsers if that assumption ever
+// stops holding.
 async function streamToBuffer(readable) {
   const chunks = [];
   for await (const chunk of readable) {
@@ -14,32 +20,45 @@ async function streamToBuffer(readable) {
   return Buffer.concat(chunks);
 }
 
-async function virusScan(file) {
-  // virus scan
-}
-
 // One stub per extraction path — kept separate (rather than one ocrProcessing
 // for everything) because each needs different real tooling later: OCR engine
 // for images, a PDF text-layer reader (falling back to OCR per-page when a PDF
 // is a scanned image with no text layer), a docx/doc parser for Word, and a
-// trivial decode for already-plain text. All currently no-ops; extractText()
-// below is what routes a file to the right one.
+// trivial decode for already-plain text. extractText() below is what routes a
+// file to the right one.
 async function ocrImageText(file) {
-  // OCR on an image (photo/scan of a page)
+  // OCR on an image (photo/scan of a page) — not implemented yet, needs a real
+  // OCR engine (e.g. Tesseract); still a stub.
 }
 
+// Extracts the text layer already embedded in a PDF (fast, exact — most
+// "digital" PDFs, e.g. exported court filings, have one). Does NOT do OCR: a
+// scanned PDF (pages that are just images with no text layer) comes back with
+// an empty/near-empty string here. Real per-page-OCR fallback for that case is
+// still a stub — see the module comment above and ocrImageText().
 async function extractPdfText(file) {
   const buffer = await streamToBuffer(file.body);
+  // v2 API: new PDFParse({ data }) + parser.getText(), then destroy() to
+  // release the underlying pdf.js document/worker — not automatic like the
+  // old v1 pdf(buffer) one-shot function call.
+  const parser = new PDFParse({ data: buffer });
   try {
-    const { text } = await pdfParse(buffer);
+    const { text } = await parser.getText();
     return text?.trim() ?? "";
   } catch (err) {
     console.error({ err }, "[document-processing] pdf text extraction failed");
     return "";
+  } finally {
+    await parser.destroy();
   }
 }
- 
 
+// .docx (OOXML) text extraction via mammoth. Legacy binary .doc is mapped to
+// the same FileCategory.WORD (see fileTypes.js) but mammoth only understands
+// the OOXML zip format, so a .doc upload predictably fails to parse here —
+// caught below and treated the same as any other extraction failure (empty
+// text, document still goes READY) rather than crashing the job. A real .doc
+// path would need a separate legacy-binary parser.
 async function extractWordText(file) {
   const buffer = await streamToBuffer(file.body);
   try {
@@ -50,6 +69,8 @@ async function extractWordText(file) {
     return "";
   }
 }
+
+// .txt/.csv/.md — already plain text, so "extraction" is just decoding bytes.
 async function extractPlainText(file) {
   const buffer = await streamToBuffer(file.body);
   return buffer.toString("utf8").trim();
@@ -76,34 +97,23 @@ async function extractText(file) {
 }
 
 async function ner(extractedText) {
-    const entities = [];
-
-    // Example: detect emails
-    const emails = extractedText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || [];
-
-    emails.forEach(email => {
-        entities.push({
-            type: "EMAIL",
-            value: email
-        });
-    });
-
-    return entities;
+  const entities = [];
+  const emails = extractedText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || [];
+  emails.forEach((email) => {
+    entities.push({ type: "EMAIL", value: email });
+  });
+  return entities;
 }
 
-
 async function autoTagging(extractedText) {
-    const tags = [];
-
-    const text = extractedText.toLowerCase();
-
-    if (text.includes("invoice")) tags.push("invoice");
-    if (text.includes("contract")) tags.push("contract");
-    if (text.includes("payment")) tags.push("payment");
-    if (text.includes("employee")) tags.push("hr");
-    if (text.includes("confidential")) tags.push("confidential");
-
-    return tags;
+  const tags = [];
+  const text = extractedText.toLowerCase();
+  if (text.includes("invoice")) tags.push("invoice");
+  if (text.includes("contract")) tags.push("contract");
+  if (text.includes("payment")) tags.push("payment");
+  if (text.includes("employee")) tags.push("hr");
+  if (text.includes("confidential")) tags.push("confidential");
+  return tags;
 }
 
 

@@ -56,7 +56,7 @@ export async function appendDocumentTags(tx, { documentId, tags }) {
     .set({
       tags: sql`(
         select coalesce(array_agg(distinct t), '{}')
-        from unnest(${documents.tags} || ${tags}::text[]) as t
+        from unnest(${documents.tags} || ARRAY[${sql.join(tags.map((t) => sql`${t}`), sql`, `)}]::text[]) as t
       )`,
       updatedAt: sql`now()`,
     })
