@@ -40,7 +40,7 @@ const MAPPING = {
       docType: { type: "keyword" },
       classification: { type: "keyword" },
       tags: { type: "keyword" },
-      // Populated from ocrProcessing() + ner() once documentProcessing.processor.js
+      // Populated from extractText() + ner() once documentProcessing.processor.js
       // wires them up (both are currently stubs — see that file). Until then this
       // is indexed empty and search effectively runs on title/description/tags.
       extractedText: { type: "text" },

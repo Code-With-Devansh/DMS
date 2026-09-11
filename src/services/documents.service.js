@@ -8,6 +8,7 @@ import userRepository from "../repositories/user.repository.js";
 import { getActivePolicy } from "../lib/abacPolicy.js";
 import { recordAudit, AuditAction, TargetType } from "../audit/index.js";
 import { enqueueLedgerAnchor } from "../jobs/ledger.queue.js";
+import { enqueueDocumentProcessing } from "../jobs/documentProcessing.queue.js";
 import { ledger } from "../ledger/index.js";
 import { sha256HexOfStream, decideIntegrity, toCustodyEvents } from "../ledger/integrity.js";
 
@@ -112,9 +113,9 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
         sizeBytes: file.size,
         sha256,
         createdBy: userId,
-        // Our only synchronous "processing" is hashing. The virus-scan/OCR/NER
-        // BullMQ pipeline (DESIGN §11) will reintroduce SCANNING->READY later.
-        processingStatus: "READY",
+        // Enqueued below, after commit — the virus-scan/OCR/NER/auto-tag
+        // pipeline (DESIGN §11) drives this SCANNING -> OCR -> INDEXING -> READY.
+        processingStatus: "SCANNING",
       });
       // Same transaction: no document exists without its "created" audit entry.
       await recordAudit(tx, {
@@ -151,6 +152,14 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
     sha256,
     classification: metadata.classification,
     storageRef: storageKey,
+    actor: userId,
+  });
+
+  // Same fail-open discipline as the ledger anchor enqueue above.
+  await enqueueDocumentProcessing({
+    versionId,
+    documentId,
+    caseId,
     actor: userId,
   });
 
@@ -191,7 +200,7 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
         sha256,
         note: metadata.note,
         createdBy: userId,
-        processingStatus: "READY",
+        processingStatus: "SCANNING",
       });
       await recordAudit(tx, {
         actorId: userId,
@@ -223,6 +232,13 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
     sha256,
     classification: doc.classification,
     storageRef: storageKey,
+    actor: userId,
+  });
+
+  await enqueueDocumentProcessing({
+    versionId,
+    documentId,
+    caseId: doc.caseId,
     actor: userId,
   });
 

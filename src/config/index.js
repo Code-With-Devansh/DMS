@@ -147,6 +147,16 @@ export default {
       signKeyPath: process.env.FABRIC_SIGN_KEY,
     },
   },
+  documentProcessing: {
+    // Master switch, same fail-open shape as ledger.enabled. When false,
+    // uploads skip enqueue entirely (versions stay in whatever processingStatus
+    // insertVersion set) — for environments with no worker/Redis.
+    enabled: (process.env.DOCUMENT_PROCESSING_ENABLED || "true") !== "false",
+    queueName: process.env.DOCUMENT_PROCESSING_QUEUE_NAME || "document-processing",
+    attempts: Number(process.env.DOCUMENT_PROCESSING_ATTEMPTS) || 3,
+    backoffMs: Number(process.env.DOCUMENT_PROCESSING_BACKOFF_MS) || 5000,
+    concurrency: Number(process.env.DOCUMENT_PROCESSING_WORKER_CONCURRENCY) || 4,
+  },
   governance: {
     // Master switch for the admin-hierarchy / quorum subsystem (GOVERNANCE.md).
     // When false the governance routes still mount but the service refuses to
