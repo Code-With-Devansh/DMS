@@ -75,6 +75,11 @@ class RefreshTokenRepository {
             .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
         return tokens;
     }
+
+    async findByUserId(userId){
+        const [refreshToken] = await db.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);
+        return refreshToken;
+    }
     
     
 }

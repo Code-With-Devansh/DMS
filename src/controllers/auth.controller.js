@@ -12,7 +12,8 @@ import { notFound, badRequest, unauthenticated } from "../lib/errors.js";
 import redisClient from "../config/redis.js";
 import { hashRefreshToken, refreshTokenKey, accessTokenKey } from "../utils/hashToken.js";
 import { getUserIdFromMfaToken, getUserIdFromRefreshToken } from "../lib/tokens.js";
-
+import refreshRepository from "../repositories/refresh-token.repository.js"
+import refreshTokenRepository from "../repositories/refresh-token.repository.js";
 
 // POST /login — verify credentials, then stash a short-lived MFA token in a
 // cookie
@@ -127,7 +128,7 @@ export async function refresh(req, res) {
         throw notFound("Invalid refresh token");
     }
 
-    const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId));
+    const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId)) || (await refreshTokenRepository.findByUserId(userId)).tokenHash;
     if (!storedRefreshTokenHash || storedRefreshTokenHash !== hashRefreshToken(refreshToken)) {
         await service.revokeRefreshToken(userId);
         await redisClient.del(refreshTokenKey(userId));
