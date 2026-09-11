@@ -1,4 +1,18 @@
+import pdfParse from "pdf-parse/lib/pdf-parse.js"; // NOT "pdf-parse" — that package's
+  // top-level index.js runs a debug/self-test harness whenever module.parent is
+  // unset, which is always true when it's loaded via ESM import(); importing the
+  // lib file directly skips that entirely.
+import mammoth from "mammoth";
 import { classifyFile, FileCategory } from "./fileTypes.js";
+
+
+async function streamToBuffer(readable) {
+  const chunks = [];
+  for await (const chunk of readable) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 async function virusScan(file) {
   // virus scan
@@ -15,16 +29,30 @@ async function ocrImageText(file) {
 }
 
 async function extractPdfText(file) {
-  // PDF text-layer extraction; real implementation should fall back to
-  // per-page OCR when the PDF turns out to have no text layer (scanned PDF)
+  const buffer = await streamToBuffer(file.body);
+  try {
+    const { text } = await pdfParse(buffer);
+    return text?.trim() ?? "";
+  } catch (err) {
+    console.error({ err }, "[document-processing] pdf text extraction failed");
+    return "";
+  }
 }
+ 
 
 async function extractWordText(file) {
-  // .doc/.docx text extraction
+  const buffer = await streamToBuffer(file.body);
+  try {
+    const { value } = await mammoth.extractRawText({ buffer });
+    return value?.trim() ?? "";
+  } catch (err) {
+    console.error({ err }, "[document-processing] word text extraction failed");
+    return "";
+  }
 }
-
 async function extractPlainText(file) {
-  // .txt/.csv/.md — already text, just decode the bytes
+  const buffer = await streamToBuffer(file.body);
+  return buffer.toString("utf8").trim();
 }
 
 // Routes a file to the right extraction stub based on its MIME type.
@@ -48,11 +76,34 @@ async function extractText(file) {
 }
 
 async function ner(extractedText) {
-  // ner
+    const entities = [];
+
+    // Example: detect emails
+    const emails = extractedText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || [];
+
+    emails.forEach(email => {
+        entities.push({
+            type: "EMAIL",
+            value: email
+        });
+    });
+
+    return entities;
 }
 
+
 async function autoTagging(extractedText) {
-  // auto-tagging
+    const tags = [];
+
+    const text = extractedText.toLowerCase();
+
+    if (text.includes("invoice")) tags.push("invoice");
+    if (text.includes("contract")) tags.push("contract");
+    if (text.includes("payment")) tags.push("payment");
+    if (text.includes("employee")) tags.push("hr");
+    if (text.includes("confidential")) tags.push("confidential");
+
+    return tags;
 }
 
 
