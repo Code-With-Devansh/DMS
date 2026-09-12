@@ -115,6 +115,9 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
         createdBy: userId,
         // Left at the schema default "SCANNING": the async intelligence pipeline
         // (enqueued after commit below) drives it to READY — or QUARANTINED/FAILED.
+        // Enqueued below, after commit — the virus-scan/OCR/NER/auto-tag
+        // pipeline (DESIGN §11) drives this SCANNING -> OCR -> INDEXING -> READY.
+        processingStatus: "SCANNING",
       });
       // Same transaction: no document exists without its "created" audit entry.
       await recordAudit(tx, {
@@ -157,6 +160,7 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
   // Kick off the async intelligence pipeline (ClamAV -> extract/OCR -> NER ->
   // auto-tag -> index). Fail-open, same as the anchor enqueue: a broker hiccup
   // leaves the version SCANNING for the worker's reconciliation sweep.
+  // Same fail-open discipline as the ledger anchor enqueue above.
   await enqueueDocumentProcessing({
     versionId,
     documentId,
@@ -204,6 +208,7 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
         note: metadata.note,
         createdBy: userId,
         // Schema default "SCANNING"; the async pipeline (enqueued after commit) advances it.
+        processingStatus: "SCANNING",
       });
       await recordAudit(tx, {
         actorId: userId,

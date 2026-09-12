@@ -26,6 +26,15 @@ export async function indexDocumentVersion({
   const doc = await getDocumentById(documentId);
   if (!doc) return; // deleted/racing with a delete — nothing to index
 
+  // The OpenSearch mapping's `entities` field is `keyword` — a flat list of
+  // matchable strings (it's one of searchDocuments()'s multi_match fields),
+  // not the richer { type, value } shape ner() returns for the audit log.
+  // Flatten to just the values here; accept bare strings too so this doesn't
+  // break if a caller ever passes those directly.
+  const entityValues = entities
+    .map((e) => (typeof e === "string" ? e : e?.value))
+    .filter(Boolean);
+
   await opensearch.index({
     index: DOCUMENTS_INDEX,
     id: documentId,
@@ -39,7 +48,7 @@ export async function indexDocumentVersion({
       classification: doc.classification,
       tags: Array.from(new Set([...(doc.tags ?? []), ...tags])),
       extractedText,
-      entities,
+      entities: entityValues,
       sealed: doc.sealed,
       createdBy: doc.createdBy,
       deletedAt: doc.deletedAt,

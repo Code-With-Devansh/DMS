@@ -24,6 +24,9 @@ import { createExtractor } from "./processing/extract/index.js";
 import { normalizeText } from "./processing/normalize.js";
 import { createNerPipeline } from "./processing/ner/index.js";
 import { createTagger } from "./processing/tagging/index.js";
+import { indexDocumentVersion } from "./services/search.service.js";
+import { ensureDocumentsIndex } from "./search/documents.index.js";
+import { storage } from "./storage/index.js";
 
 // Ledger-anchoring worker process. Consumes the jobs enqueued by
 // src/jobs/ledger.queue.js (enqueueLedgerAnchor) and drives each version's
@@ -157,6 +160,68 @@ console.log(
     `(driver=${config.ledger.driver}, concurrency=${config.ledger.concurrency})`,
 );
 
+// Document-processing worker. Consumes the jobs enqueued by
+// src/jobs/documentProcessing.queue.js (enqueueDocumentProcessing) and drives
+// each version's processingStatus from SCANNING -> OCR -> INDEXING -> READY
+// (or FAILED after retries), then indexes the result into OpenSearch. The
+// virus-scan/OCR/NER/auto-tag stages inside the processor are still stubs
+// (see documentProcessing.processor.js) — this wires the pipeline shape up
+// end-to-end so search has real (if currently empty) extractedText/entities
+// to work against.
+const documentProcessingDeps = { storage, repo, db, recordAudit, AuditAction, TargetType, indexDocumentVersion };
+const processDocument = createDocumentProcessingProcessor(documentProcessingDeps);
+const markProcessingFailed = createProcessingFailureHandler(documentProcessingDeps);
+
+let documentProcessingWorker;
+if (config.documentProcessing.enabled) {
+  // Idempotent — creates the OpenSearch index on first boot, no-ops after.
+  // Awaited here (top-level await) before the worker starts pulling jobs, so
+  // the very first processed document has somewhere to be indexed into.
+  await ensureDocumentsIndex();
+
+  documentProcessingWorker = new Worker(config.documentProcessing.queueName, processDocument, {
+    connection,
+    concurrency: config.documentProcessing.concurrency,
+  });
+
+  documentProcessingWorker.on("completed", (job) => {
+    console.log(`[document-processing] processed version ${job.id}`);
+  });
+
+  // Same "only give up once attempts are exhausted" discipline as the ledger
+  // worker above.
+  documentProcessingWorker.on("failed", async (job, err) => {
+    if (!job) {
+      console.error("[document-processing] job failed with no job handle:", err?.message ?? err);
+      return;
+    }
+    const attemptsMade = job.attemptsMade ?? 0;
+    const maxAttempts = job.opts?.attempts ?? config.documentProcessing.attempts;
+    const terminal = attemptsMade >= maxAttempts;
+    console.error(
+      `[document-processing] processing failed for ${job.id} (attempt ${attemptsMade}/${maxAttempts})` +
+        `${terminal ? " — giving up, marking FAILED" : " — will retry"}: ${err?.message ?? err}`,
+    );
+    if (!terminal) return;
+    try {
+      await markProcessingFailed(job, err);
+    } catch (markErr) {
+      console.error(`[document-processing] could not mark ${job.id} FAILED:`, markErr?.message ?? markErr);
+    }
+  });
+
+  documentProcessingWorker.on("error", (err) => {
+    console.error("[document-processing] worker error:", err?.message ?? err);
+  });
+
+  console.log(
+    `[document-processing] worker up on queue ${config.documentProcessing.queueName} ` +
+      `(concurrency=${config.documentProcessing.concurrency})`,
+  );
+} else {
+  console.log("[document-processing] disabled (DOCUMENT_PROCESSING_ENABLED=false); worker not started");
+}
+
 // Graceful shutdown: stop accepting jobs, finish in-flight work, release
 // connections. nodemon (dev) and Docker both signal via SIGINT/SIGTERM.
 let shuttingDown = false;
@@ -168,6 +233,7 @@ async function shutdown(signal) {
     clearInterval(processingReconciler);
     await worker.close();
     await processingWorker.close();
+    await documentProcessingWorker?.close();
     await mentionNotificationWorker.close();
     await ledger.close?.();
   } catch (err) {
