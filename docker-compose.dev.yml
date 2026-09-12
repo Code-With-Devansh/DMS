@@ -113,7 +113,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: dockerfile.dev
     container_name: DMS-api
 
     env_file: .env
@@ -169,7 +169,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: dockerfile.dev
     container_name: DMS-worker
     env_file: .env
     depends_on:
@@ -198,11 +198,6 @@ services:
     # document-intelligence pipeline pulls object bytes from MinIO, scans them
     # via ClamAV, OCRs via the `ocr` sidecar, and writes to OpenSearch — so it
     # now needs the same storage/search env as the api.
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
-      REDIS_URL: redis://redis:6379
-      STORAGE_ENDPOINT: http://minio:9000
-      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
     # No ports: the worker is a background consumer, not an HTTP service. It
     # reaches Postgres + Redis over the internal network, plus MinIO (document
     # bytes for the processing pipeline) and OpenSearch (indexing) — same
@@ -223,8 +218,6 @@ services:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
       OCR_URL: http://ocr:8000
-
-      OPENSEARCH_NODES: http://opensearch:9200
       # LEDGER_DRIVER is intentionally NOT set here so it comes from .env (like the
       # api): LEDGER_DRIVER=fabric in .env then enables the real ledger for BOTH
       # the API and this worker at once. The worker is the process that anchors, so
@@ -239,7 +232,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: dockerfile.dev
     container_name: DMS-migrate
     env_file: .env
     depends_on:
