@@ -70,17 +70,57 @@ services:
     depends_on:
       - postgres
       - redis
+      - clamav
+      - ocr
     networks:
       - internal
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # Object storage + search: the intelligence pipeline reads bytes and indexes.
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-dms-documents}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
+      STORAGE_SSE: ${STORAGE_SSE:-AES256}
+      OPENSEARCH_NODES: ${OPENSEARCH_NODES:-http://opensearch:9200}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      OCR_URL: http://ocr:8000
     command: node src/worker.js
 
-  
+  clamav:
+    image: clamav/clamav:1.3
+    container_name: DMS-clamav
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    volumes:
+      - clamav_data:/var/lib/clamav
+
+  ocr:
+    build:
+      context: ./services/ocr
+    container_name: DMS-ocr
+    restart: unless-stopped
+    networks:
+      - internal
+    volumes:
+      - ocr_models:/root/.paddleocr
+
 volumes:
   postgres_data:
   redis_data:
+  clamav_data:
+  ocr_models:
 
 networks:
   internal:

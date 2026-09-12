@@ -1,6 +1,12 @@
 import { and, count, desc, eq, gt, isNull, or, ilike, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { documents, documentVersions, documentAccessGrants } from "../db/schema/index.js";
+import {
+  documents,
+  documentVersions,
+  documentAccessGrants,
+  documentExtractions,
+  documentEntities,
+} from "../db/schema/index.js";
 
 // ── documents ────────────────────────────────────────────────────────────────
 export async function insertDocument(tx, values) {
@@ -63,6 +69,93 @@ export async function appendDocumentTags(tx, { documentId, tags }) {
     .where(eq(documents.id, documentId))
     .returning();
   return row;
+}
+
+// ── document intelligence: extractions + entities ────────────────────────────
+// (src/jobs/documentProcessing.processor.js). document_extractions holds one
+// row per version; the processor upserts it by version_id (idempotent re-runs).
+
+// Create the row if absent, else touch updated_at. Called once at job start so
+// every later setExtractionFields has a row to update.
+export async function ensureExtraction(tx, { versionId, documentId, status = "SCANNING" }) {
+  const [row] = await tx
+    .insert(documentExtractions)
+    .values({ versionId, documentId, status, startedAt: sql`now()` })
+    .onConflictDoUpdate({
+      target: documentExtractions.versionId,
+      set: { updatedAt: sql`now()` },
+    })
+    .returning();
+  return row;
+}
+
+// Patch an arbitrary subset of the pipeline's mutable columns; always bumps
+// updated_at. `fields` keys are drizzle column names (status, extractedText, …).
+export async function setExtractionFields(tx, { versionId, fields }) {
+  const [row] = await tx
+    .update(documentExtractions)
+    .set({ ...fields, updatedAt: sql`now()` })
+    .where(eq(documentExtractions.versionId, versionId))
+    .returning();
+  return row ?? null;
+}
+
+export async function getExtractionByVersion(versionId) {
+  const [row] = await db
+    .select()
+    .from(documentExtractions)
+    .where(eq(documentExtractions.versionId, versionId));
+  return row ?? null;
+}
+
+// Replace every entity row for a version with a fresh set, in one statement pair,
+// so a re-run never leaves stale mentions behind.
+export async function replaceEntities(tx, { versionId, documentId, entities }) {
+  await tx.delete(documentEntities).where(eq(documentEntities.versionId, versionId));
+  if (!entities?.length) return [];
+  return tx
+    .insert(documentEntities)
+    .values(
+      entities.map((e) => ({
+        versionId,
+        documentId,
+        type: e.type,
+        value: e.value,
+        normalizedValue: e.normalizedValue ?? null,
+        confidence: String(e.confidence ?? 1),
+        startOffset: e.startOffset ?? null,
+        endOffset: e.endOffset ?? null,
+        source: e.source,
+      })),
+    )
+    .returning();
+}
+
+export async function listEntitiesByVersion(versionId) {
+  return db
+    .select()
+    .from(documentEntities)
+    .where(eq(documentEntities.versionId, versionId))
+    .orderBy(documentEntities.type, documentEntities.startOffset);
+}
+
+// Versions stuck mid-pipeline longer than `olderThan` — fuel for the worker's
+// reconciliation sweep (mirrors the ledger's pending-anchor sweeper).
+export async function listStuckExtractions(olderThan, limit = 100) {
+  return db
+    .select({
+      versionId: documentExtractions.versionId,
+      documentId: documentExtractions.documentId,
+      status: documentExtractions.status,
+    })
+    .from(documentExtractions)
+    .where(
+      and(
+        sql`${documentExtractions.status}::text not in ('READY', 'FAILED', 'QUARANTINED')`,
+        sql`${documentExtractions.updatedAt} < ${olderThan}`,
+      ),
+    )
+    .limit(limit);
 }
 
 // ── document_versions ─────────────────────────────────────────────────────────

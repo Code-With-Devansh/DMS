@@ -22,6 +22,20 @@
       "when": 1788605752288,
       "tag": "0002_version_control",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0003_document_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788700000001,
+      "tag": "0004_document_extractions_pending_idx",
+      "breakpoints": true
     }
   ]
 }

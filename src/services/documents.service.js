@@ -113,6 +113,8 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
         sizeBytes: file.size,
         sha256,
         createdBy: userId,
+        // Left at the schema default "SCANNING": the async intelligence pipeline
+        // (enqueued after commit below) drives it to READY — or QUARANTINED/FAILED.
         // Enqueued below, after commit — the virus-scan/OCR/NER/auto-tag
         // pipeline (DESIGN §11) drives this SCANNING -> OCR -> INDEXING -> READY.
         processingStatus: "SCANNING",
@@ -155,12 +157,17 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
     actor: userId,
   });
 
+  // Kick off the async intelligence pipeline (ClamAV -> extract/OCR -> NER ->
+  // auto-tag -> index). Fail-open, same as the anchor enqueue: a broker hiccup
+  // leaves the version SCANNING for the worker's reconciliation sweep.
   // Same fail-open discipline as the ledger anchor enqueue above.
   await enqueueDocumentProcessing({
     versionId,
     documentId,
     caseId,
     actor: userId,
+    storageKey,
+    mimeType: file.mimetype,
   });
 
   return getDocument(documentId);
@@ -200,6 +207,7 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
         sha256,
         note: metadata.note,
         createdBy: userId,
+        // Schema default "SCANNING"; the async pipeline (enqueued after commit) advances it.
         processingStatus: "SCANNING",
       });
       await recordAudit(tx, {
@@ -235,11 +243,14 @@ export async function addVersion({ documentId, userId, ip, file, metadata }) {
     actor: userId,
   });
 
+  // Async intelligence pipeline for the new version (fail-open) — see createDocument.
   await enqueueDocumentProcessing({
     versionId,
     documentId,
     caseId: doc.caseId,
     actor: userId,
+    storageKey,
+    mimeType: file.mimetype,
   });
 
   return toVersionDTO(version);
@@ -317,6 +328,60 @@ export async function getVersion(documentId, versionId) {
   return toVersionDTO(version);
 }
 
+// Document-intelligence results for one version: ClamAV verdict, extracted text,
+// entities and tags produced by the async pipeline
+// (src/jobs/documentProcessing.processor.js). GET /documents/:id/versions/:vid/extraction.
+export async function getVersionExtraction(documentId, versionId, { includeText = false } = {}) {
+  const doc = await repo.getDocumentById(documentId);
+  if (!doc) throw notFound("document not found");
+  const version = await repo.getVersion(documentId, versionId);
+  if (!version) throw notFound("version not found");
+
+  const extraction = await repo.getExtractionByVersion(versionId);
+  if (!extraction) {
+    // Enqueued but not started, or processing disabled.
+    return {
+      versionId,
+      processingStatus: version.processingStatus,
+      status: version.processingStatus,
+      method: null,
+      scannedClean: false,
+      entities: [],
+      tags: [],
+    };
+  }
+
+  const entities = await repo.listEntitiesByVersion(versionId);
+  return {
+    versionId,
+    processingStatus: version.processingStatus,
+    status: extraction.status,
+    method: extraction.extractionMethod,
+    mimeType: extraction.mimeType,
+    textChars: extraction.textChars,
+    pageCount: extraction.pageCount ?? null,
+    ocrConfidence: extraction.ocrConfidence == null ? null : Number(extraction.ocrConfidence),
+    scannedClean: extraction.scannedClean,
+    virusSignature: extraction.virusSignature ?? undefined,
+    error: extraction.error ?? undefined,
+    startedAt: extraction.startedAt ?? undefined,
+    finishedAt: extraction.finishedAt ?? undefined,
+    tags: Array.isArray(extraction.tags) ? extraction.tags : [],
+    entities: entities.map((e) => ({
+      type: e.type,
+      value: e.value,
+      normalizedValue: e.normalizedValue ?? undefined,
+      confidence: e.confidence == null ? undefined : Number(e.confidence),
+      startOffset: e.startOffset ?? undefined,
+      endOffset: e.endOffset ?? undefined,
+      source: e.source,
+    })),
+    // Extracted text is potentially large and is untrusted OCR output — only
+    // returned when explicitly asked for (?includeText=true).
+    ...(includeText ? { text: extraction.extractedText ?? "" } : {}),
+  };
+}
+
 // Restore an older version by creating a NEW version whose bytes are copied from
 // the source (§4: POST /documents/:id/versions/:vid/restore). The version_no
 // trigger bumps the number and the current-pointer trigger moves
@@ -360,7 +425,8 @@ export async function restoreVersion({ documentId, sourceVersionId, userId, ip }
         note: `Restored from version ${source.versionNo}`,
         restoredFromVersionId: source.id,
         createdBy: userId,
-        processingStatus: "READY",
+        // Schema default "SCANNING"; the async pipeline (enqueued after commit)
+        // re-scans and re-extracts the restored bytes like any other version.
       });
       await recordAudit(tx, {
         actorId: userId,
@@ -395,6 +461,16 @@ export async function restoreVersion({ documentId, sourceVersionId, userId, ip }
     classification: doc.classification,
     storageRef: storageKey,
     actor: userId,
+  });
+
+  // Async intelligence pipeline for the restored version (fail-open) — see createDocument.
+  await enqueueDocumentProcessing({
+    versionId: newVersionId,
+    documentId,
+    caseId: doc.caseId,
+    actor: userId,
+    storageKey,
+    mimeType: source.mimeType,
   });
 
   return getDocument(documentId);

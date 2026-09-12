@@ -9,3 +9,10 @@ DMS.zip
 # client (DEV-ONLY signing cert/key + peer TLS CA). NEVER commit key material.
 .fabric-crypto/
 package-lock.json
+
+# Generated/regenerable test fixtures for manually exercising the
+# document-intelligence pipeline (docs/TESTING_DOCUMENT_INTELLIGENCE.md) --
+# includes the EICAR antivirus test string, which some scanners/mirrors flag on
+# sight even though it is inert. Regenerate with the commands in that doc.
+test/fixtures/document-intelligence/
+__pycache__/
