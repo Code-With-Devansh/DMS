@@ -103,6 +103,17 @@ export async function getVersion(req, res) {
   res.json(await service.getVersion(id, vid));
 }
 
+export async function getVersionExtraction(req, res) {
+  const { id, vid } = req.params;
+  await authorize({
+    user: req.user,
+    action: "document:read",
+    resource: { documentId: id, versionId: vid },
+  });
+  const includeText = req.query.includeText === "true" || req.query.includeText === "1";
+  res.json(await service.getVersionExtraction(id, vid, { includeText }));
+}
+
 export async function restoreVersion(req, res) {
   const { id, vid } = req.params;
   await authorize({

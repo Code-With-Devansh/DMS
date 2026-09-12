@@ -32,7 +32,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: DMS-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -73,10 +73,47 @@ services:
       timeout: 5s
       retries: 10
 
+  clamav:
+    image: clamav/clamav:latest
+    container_name: DMS-clamav
+    restart: unless-stopped
+    networks:
+      - internal
+    # First boot downloads signature DBs (~1-2 min) — the healthcheck gates the
+    # worker until clamd is actually answering on 3310.
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    volumes:
+      - clamav_data:/var/lib/clamav
+
+  ocr:
+    build:
+      context: ./services/ocr
+    container_name: DMS-ocr
+    restart: unless-stopped
+    networks:
+      - internal
+    # PaddleOCR only ever sees document bytes handed to it by the worker; it
+    # needs no other network access. CPU-only.
+    environment:
+      OCR_MODEL_LANG: en
+    volumes:
+      - ocr_models:/root/.paddleocr
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
   api:
     build:
       context: .
-      dockerfile: dockerfile.dev
+      dockerfile: Dockerfile.dev
     container_name: DMS-api
 
     env_file: .env
@@ -132,7 +169,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: dockerfile.dev
+      dockerfile: Dockerfile.dev
     container_name: DMS-worker
     env_file: .env
     depends_on:
@@ -142,6 +179,14 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      minio:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      ocr:
+        condition: service_started
     volumes:
       - .:/usr/src/app
       - node_modules:/usr/src/app/node_modules
@@ -149,12 +194,25 @@ services:
       - ./.fabric-crypto:/fabric/crypto:ro
     networks:
       - internal
-    # No ports: the worker is a background consumer, not an HTTP service. It
-    # reaches Postgres + Redis over the internal network. It does NOT touch object
-    # storage (its import graph excludes src/storage), so no MinIO env is needed.
+    # No ports: the worker is a background consumer, not an HTTP service. The
+    # document-intelligence pipeline pulls object bytes from MinIO, scans them
+    # via ClamAV, OCRs via the `ocr` sidecar, and writes to OpenSearch — so it
+    # now needs the same storage/search env as the api.
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://redis:6379
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: dms-documents
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_SSE: AES256
+      OPENSEARCH_NODES: http://opensearch:9200
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      OCR_URL: http://ocr:8000
       # LEDGER_DRIVER is intentionally NOT set here so it comes from .env (like the
       # api): LEDGER_DRIVER=fabric in .env then enables the real ledger for BOTH
       # the API and this worker at once. The worker is the process that anchors, so
@@ -169,7 +227,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: dockerfile.dev
+      dockerfile: Dockerfile.dev
     container_name: DMS-migrate
     env_file: .env
     depends_on:
@@ -191,6 +249,8 @@ volumes:
   node_modules:
   minio_data:
   opensearch_data:
+  clamav_data:
+  ocr_models:
 
 networks:
   internal:
