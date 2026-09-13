@@ -5,7 +5,7 @@ CREATE TYPE "public"."doc_type" AS ENUM('FIR', 'POLICE_REPORT', 'INVESTIGATION_R
 CREATE TYPE "public"."integrity_status" AS ENUM('VERIFIED', 'TAMPERED', 'PENDING');--> statement-breakpoint
 CREATE TYPE "public"."ledger_status" AS ENUM('PENDING_LEDGER', 'ANCHORED', 'FAILED');--> statement-breakpoint
 CREATE TYPE "public"."pool_type" AS ENUM('SYSTEM_ADMIN', 'SECURITY_ADMIN', 'ORG_ADMIN');--> statement-breakpoint
-CREATE TYPE "public"."processing_status" AS ENUM('SCANNING', 'OCR', 'INDEXING', 'READY', 'FAILED');--> statement-breakpoint
+CREATE TYPE "public"."processing_status" AS ENUM('SCANNING', 'OCR', 'EXTRACTING', 'INDEXING', 'TAGGING', 'READY', 'QUARANTINED', 'FAILED');--> statement-breakpoint
 CREATE TYPE "public"."role" AS ENUM('INVESTIGATING_OFFICER', 'SUPERVISOR', 'PROSECUTOR', 'JUDGE', 'COURT_CLERK', 'FORENSIC_ANALYST', 'RECORDS_ADMIN', 'SECURITY_ADMIN', 'ORG_ADMIN', 'SYSTEM_ADMIN', 'AUDITOR');--> statement-breakpoint
 CREATE TYPE "public"."status" AS ENUM('ACTIVE', 'DISABLED');--> statement-breakpoint
 CREATE TYPE "public"."sudo_action_type" AS ENUM('APPOINT_ORG_ADMIN', 'REMOVE_ORG_ADMIN', 'APPOINT_SYSTEM_ADMIN', 'REMOVE_SYSTEM_ADMIN', 'CHANGE_POOL_THRESHOLD', 'ONBOARD_ORG', 'CHANGE_ABAC_POLICY', 'POOL_REINSTATEMENT', 'GENESIS_REPLACEMENT');--> statement-breakpoint
@@ -61,6 +61,42 @@ CREATE TABLE "documents" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "document_entities" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"version_id" uuid NOT NULL,
+	"document_id" uuid NOT NULL,
+	"type" text NOT NULL,
+	"value" text NOT NULL,
+	"normalized_value" text,
+	"confidence" numeric(5, 4) DEFAULT '1' NOT NULL,
+	"start_offset" integer,
+	"end_offset" integer,
+	"source" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "document_extractions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"version_id" uuid NOT NULL,
+	"document_id" uuid NOT NULL,
+	"status" "processing_status" DEFAULT 'SCANNING' NOT NULL,
+	"extraction_method" text,
+	"mime_type" text,
+	"extracted_text" text,
+	"text_chars" integer DEFAULT 0 NOT NULL,
+	"page_count" integer,
+	"ocr_confidence" numeric(5, 4),
+	"tags" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"scanned_clean" boolean DEFAULT false NOT NULL,
+	"virus_signature" text,
+	"error" text,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "document_extractions_version_id_key" UNIQUE("version_id")
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -136,6 +172,38 @@ CREATE TABLE "audit_log" (
 	CONSTRAINT "audit_log_entry_hash_key" UNIQUE("entry_hash"),
 	CONSTRAINT "audit_log_prev_hash_check" CHECK ("audit_log"."prev_hash" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "audit_log_entry_hash_check" CHECK ("audit_log"."entry_hash" ~ '^[0-9a-f]{64}$')
+);
+--> statement-breakpoint
+CREATE TABLE "case_activity_log" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"seq" bigserial NOT NULL,
+	"case_id" uuid NOT NULL,
+	"actor_id" uuid NOT NULL,
+	"action" text NOT NULL,
+	"target_type" text NOT NULL,
+	"target_id" uuid,
+	"details" jsonb,
+	"prev_hash" char(64) NOT NULL,
+	"entry_hash" char(64) NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "case_activity_log_seq_key" UNIQUE("seq"),
+	CONSTRAINT "case_activity_log_entry_hash_key" UNIQUE("entry_hash"),
+	CONSTRAINT "case_activity_log_prev_hash_check" CHECK ("case_activity_log"."prev_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "case_activity_log_entry_hash_check" CHECK ("case_activity_log"."entry_hash" ~ '^[0-9a-f]{64}$')
+);
+--> statement-breakpoint
+CREATE TABLE "comments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"case_id" uuid NOT NULL,
+	"document_id" uuid,
+	"parent_comment_id" uuid,
+	"author_id" uuid NOT NULL,
+	"body" text NOT NULL,
+	"mentions" text[] DEFAULT '{}'::text[] NOT NULL,
+	"edited_at" timestamp with time zone,
+	"deleted_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "comments_body_not_empty_check" CHECK (length("comments"."body") > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "admin_pool_members" (
@@ -236,17 +304,21 @@ CREATE TABLE "orgs" (
 --> statement-breakpoint
 CREATE TABLE "notifications" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" uuid NOT NULL,
 	"type" text NOT NULL,
 	"message" text NOT NULL,
 	"link" text,
 	"read" boolean DEFAULT false NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"user_id" uuid NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "document_access_grants" ADD CONSTRAINT "document_access_grants_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_restored_from_fkey" FOREIGN KEY ("restored_from_version_id") REFERENCES "public"."document_versions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "document_entities" ADD CONSTRAINT "document_entities_version_id_document_versions_id_fk" FOREIGN KEY ("version_id") REFERENCES "public"."document_versions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "document_entities" ADD CONSTRAINT "document_entities_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "document_extractions" ADD CONSTRAINT "document_extractions_version_id_document_versions_id_fk" FOREIGN KEY ("version_id") REFERENCES "public"."document_versions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "document_extractions" ADD CONSTRAINT "document_extractions_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_org_id_orgs_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."orgs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_jurisdiction_id_jurisdictions_id_fk" FOREIGN KEY ("jurisdiction_id") REFERENCES "public"."jurisdictions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -272,6 +344,11 @@ CREATE INDEX "documents_doc_type_idx" ON "documents" USING btree ("doc_type");--
 CREATE INDEX "documents_classification_idx" ON "documents" USING btree ("classification");--> statement-breakpoint
 CREATE INDEX "documents_created_by_idx" ON "documents" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "documents_active_idx" ON "documents" USING btree ("case_id") WHERE "documents"."deleted_at" is null;--> statement-breakpoint
+CREATE INDEX "document_entities_version_id_idx" ON "document_entities" USING btree ("version_id");--> statement-breakpoint
+CREATE INDEX "document_entities_document_id_type_idx" ON "document_entities" USING btree ("document_id","type");--> statement-breakpoint
+CREATE INDEX "document_entities_type_value_idx" ON "document_entities" USING btree ("type","value");--> statement-breakpoint
+CREATE INDEX "document_extractions_document_id_idx" ON "document_extractions" USING btree ("document_id");--> statement-breakpoint
+CREATE INDEX "document_extractions_pending_idx" ON "document_extractions" USING btree ("status") WHERE "document_extractions"."status" not in ('READY', 'FAILED', 'QUARANTINED');--> statement-breakpoint
 CREATE INDEX "username_idx" ON "users" USING btree ("username");--> statement-breakpoint
 CREATE INDEX "org_idx" ON "users" USING btree ("org_id");--> statement-breakpoint
 CREATE INDEX "jurisdiction_idx" ON "users" USING btree ("jurisdiction_id");--> statement-breakpoint
@@ -291,6 +368,14 @@ CREATE INDEX "audit_log_actor_id_idx" ON "audit_log" USING btree ("actor_id");--
 CREATE INDEX "audit_log_action_idx" ON "audit_log" USING btree ("action");--> statement-breakpoint
 CREATE INDEX "audit_log_target_idx" ON "audit_log" USING btree ("target_type","target_id");--> statement-breakpoint
 CREATE INDEX "audit_log_created_at_idx" ON "audit_log" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "case_activity_log_case_id_idx" ON "case_activity_log" USING btree ("case_id","created_at");--> statement-breakpoint
+CREATE INDEX "case_activity_log_actor_id_idx" ON "case_activity_log" USING btree ("actor_id");--> statement-breakpoint
+CREATE INDEX "case_activity_log_target_idx" ON "case_activity_log" USING btree ("target_type","target_id");--> statement-breakpoint
+CREATE INDEX "comments_case_id_idx" ON "comments" USING btree ("case_id","created_at");--> statement-breakpoint
+CREATE INDEX "comments_document_id_idx" ON "comments" USING btree ("document_id","created_at");--> statement-breakpoint
+CREATE INDEX "comments_parent_comment_id_idx" ON "comments" USING btree ("parent_comment_id");--> statement-breakpoint
+CREATE INDEX "comments_author_id_idx" ON "comments" USING btree ("author_id");--> statement-breakpoint
+CREATE INDEX "comments_active_idx" ON "comments" USING btree ("case_id","created_at") WHERE "comments"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "admin_pool_members_pool_id_idx" ON "admin_pool_members" USING btree ("pool_id");--> statement-breakpoint
 CREATE INDEX "admin_pool_members_user_id_idx" ON "admin_pool_members" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "admin_pools_singleton_idx" ON "admin_pools" USING btree ("pool_type") WHERE "admin_pools"."org_id" is null;--> statement-breakpoint

@@ -5,36 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788508724390,
-      "tag": "0000_chunky_secret_warriors",
+      "when": 1789230439513,
+      "tag": "0000_rainy_the_fury",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1788519994981,
-      "tag": "0001_past_rage",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788605752288,
+      "when": 1789230439514,
       "tag": "0002_version_control",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788700000000,
-      "tag": "0003_document_intelligence",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788700000001,
-      "tag": "0004_document_extractions_pending_idx",
       "breakpoints": true
     }
   ]
