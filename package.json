@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test 'src/**/*.test.js'",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles --rootDir test",
     "dev": "docker compose -f docker-compose.dev.yml up --build",
     "migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",

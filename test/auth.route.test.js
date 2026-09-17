@@ -35,7 +35,7 @@ const hashRefreshToken = jest.fn((token) => `hash:${token}`);
 jest.unstable_mockModule("../src/services/auth.service.js", () => service);
 jest.unstable_mockModule("../src/config/redis.js", () => ({ default: redisClient }));
 jest.unstable_mockModule("../src/lib/tokens.js", () => tokens);
-jest.unstable_mockModule("../src/utils/hashRefreshToken.js", () => ({ hashRefreshToken }));
+jest.unstable_mockModule("../src/utils/hashToken.js", () => ({ hashRefreshToken, hashAccessToken: jest.fn((t) => `hash:${t}`), hashActivationToken: jest.fn((t) => `hash:${t}`), hashUserId: jest.fn((id) => `hash:${id}`), accessTokenKey: jest.fn((id) => `access:${id}`), refreshTokenKey: jest.fn((id) => `refresh:${id}`) }));
 
 const { default: authRouter } = await import("../src/routes/auth.route.js");
 const { errorHandler } = await import("../src/middlewares/error.js");
@@ -44,7 +44,7 @@ function createTestApp() {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
-  app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1", authRouter);
   app.use(errorHandler);
   return app;
 }
@@ -141,11 +141,11 @@ describe("auth routes", () => {
       .set("Authorization", "Bearer access-token");
 
     expect(response.status).toBe(401);
-    expect(tokens.verifyAccessToken).not.toHaveBeenCalled();
   });
 
   it("returns the current user for a valid access token", async () => {
     tokens.verifyAccessToken.mockReturnValue({ sub: "user-1", username: "alice", role: "REVIEWER" });
+    redisClient.get.mockResolvedValue("hash:access-token");
     service.getMe.mockResolvedValue({ id: "user-1", username: "alice" });
 
     const response = await request(app)
@@ -178,6 +178,7 @@ describe("auth routes", () => {
   it("returns no body on logout and revokes the session", async () => {
     tokens.verifyAccessToken.mockReturnValue({ sub: "user-1", username: "alice" });
     tokens.getUserIdFromRefreshToken.mockReturnValue("user-1");
+    redisClient.get.mockResolvedValue("hash:access-token");
 
     const response = await request(app)
       .post("/api/v1/auth/logout")

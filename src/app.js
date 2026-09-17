@@ -73,7 +73,15 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error("[startup] failed to start:", err);
-  process.exit(1);
-});
+// Only auto-start when this file is run directly (e.g. `node src/app.js` /
+// the container's start command) — NOT when it's imported, so test files
+// (supertest) can `import app from "./app.js"` without booting a real
+// server or touching storage/OpenSearch/Redis.
+if (process.argv[1] && new URL(process.argv[1], "file:").href === import.meta.url) {
+  start().catch((err) => {
+    console.error("[startup] failed to start:", err);
+    process.exit(1);
+  });
+}
+
+export default app;

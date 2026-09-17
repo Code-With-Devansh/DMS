@@ -1,6 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { jest, beforeEach, describe, expect, it } from "@jest/globals";
+import { hashAccessToken } from "../src/utils/hashToken.js";
 
 // Route-level tests for the governance subsystem + the provisionUser admin-tier
 // guard. Mirrors test/auth.route.test.js: every DB-touching module is mocked via
@@ -72,7 +73,7 @@ function createTestApp() {
   app.use(express.json());
   // Inject an authenticated admin so authRequired routes proceed to the handler
   // under test (real requireAuth is exercised separately below via the header path).
-  app.use("/api/v1", governanceRouter);
+  app.use("/api/v1/governance", governanceRouter);
   app.use("/api/v1", usersRouter);
   app.use(errorHandler);
   return app;
@@ -85,7 +86,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   authorize.mockResolvedValue(true);
   requirePoolMembership.mockResolvedValue(true);
-  redisClient.get.mockResolvedValue(null);
+  // requireAuth checks the stored access-token hash matches (allow-list, not a
+  // revocation blocklist) — stub redis to return the hash of AUTH's bearer token.
+  redisClient.get.mockResolvedValue(hashAccessToken("access-token"));
   tokens.verifyAccessToken.mockReturnValue({ sub: "actor-1", username: "root", role: "SYSTEM_ADMIN" });
   tokens.verifyStepUpToken.mockReturnValue({ sub: "actor-1", jti: "jti-123" });
 });
