@@ -121,15 +121,8 @@ export default {
     // Ordered auto-tagging stages (src/processing/tagging/).
     taggingPipeline: (process.env.TAGGING_PIPELINE || "rules").split(",").map((s) => s.trim()),
   },
-  opensearch: {
-    nodes: (process.env.OPENSEARCH_NODES || "http://opensearch:9200").split(","),
-    username: process.env.OPENSEARCH_USERNAME || undefined,
-    password: process.env.OPENSEARCH_PASSWORD || undefined,
-    // Self-signed certs are normal for a dev/on-prem cluster; require a real CA
-    // in prod by setting OPENSEARCH_REJECT_UNAUTHORIZED=true.
-    rejectUnauthorized: (process.env.OPENSEARCH_REJECT_UNAUTHORIZED || "false") === "true",
-    requestTimeoutMs: Number(process.env.OPENSEARCH_REQUEST_TIMEOUT_MS) || 10_000,
-  },
+  // Document search now runs on Postgres itself (documents.search_vector,
+  // drizzle/0003_search_fts.sql) — no separate search-service config block.
     app: {
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),

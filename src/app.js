@@ -16,7 +16,6 @@ import searchRouter from "./routes/search.route.js";
 import { storage } from "./storage/index.js";
 import { errorHandler } from "./middlewares/error.js";
 import { requireAuth } from './middlewares/auth.js';
-import { ensureDocumentsIndex } from "./search/documents.index.js";
 import { attachRealtimeServer } from "./realtime/server.js";
 import redisClient from "./config/redis.js";
 
@@ -64,8 +63,9 @@ app.use(errorHandler);
 async function start() {
   // Make sure the documents bucket exists before serving (retries a cold MinIO).
   await storage.ensureBucket();
-  // Idempotent — creates the OpenSearch index on first boot, no-ops after.
-  await ensureDocumentsIndex();
+  // Full-text search lives on the documents table itself now (a
+  // trigger-maintained tsvector column + GIN index, drizzle/0003_search_fts.sql)
+  // — no separate index to bootstrap here.
   const server = createServer(app);
   await attachRealtimeServer(server, redisClient);
   server.listen(port, () => {
@@ -76,7 +76,7 @@ async function start() {
 // Only auto-start when this file is run directly (e.g. `node src/app.js` /
 // the container's start command) — NOT when it's imported, so test files
 // (supertest) can `import app from "./app.js"` without booting a real
-// server or touching storage/OpenSearch/Redis.
+// server or touching storage/Redis.
 if (process.argv[1] && new URL(process.argv[1], "file:").href === import.meta.url) {
   start().catch((err) => {
     console.error("[startup] failed to start:", err);

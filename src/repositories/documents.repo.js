@@ -322,3 +322,81 @@ export async function listAccessGrants(documentId) {
     .where(and(eq(documentAccessGrants.documentId, documentId), isNull(documentAccessGrants.revokedAt)))
     .orderBy(desc(documentAccessGrants.createdAt));
 }
+// ── search (see drizzle/0003_search_fts.sql: trigger-maintained search_vector,
+// documents_search_vector_idx, documents_title_trgm_idx) ──────────────────────
+
+// Called from search.service.js#updateDocumentSearchIndex once extraction
+// finishes. Writing extracted_text/entities is enough — a BEFORE UPDATE
+// trigger recomputes search_vector as part of this same UPDATE, no separate
+// reindex step.
+export async function updateDocumentSearchText(tx, { documentId, extractedText, entities }) {
+  const [row] = await tx
+    .update(documents)
+    .set({ extractedText, entities })
+    .where(eq(documents.id, documentId))
+    .returning();
+  return row ?? null;
+}
+
+// Called from search.service.js#clearDocumentSearchIndex. Not wired up to the
+// delete flow yet (see that function's comment) — kept as the Postgres
+// equivalent of the old OpenSearch document-delete call for when it is.
+export async function clearDocumentSearchText(tx, { documentId }) {
+  const [row] = await tx
+    .update(documents)
+    .set({ extractedText: null, entities: sql`'{}'::text[]` })
+    .where(eq(documents.id, documentId))
+    .returning();
+  return row ?? null;
+}
+
+// Ranked candidate rows for search.service.js#searchDocuments. Knows nothing
+// about who's asking — callers over-fetch and re-check access per row against
+// the real authorize() path, same division of concerns the old OpenSearch
+// query had (see the module comment in search.service.js).
+//
+// `q` is matched two ways, combined with OR:
+//   - search_vector @@ websearch_to_tsquery(...): the normal case — handles
+//     quoted phrases and "-word" exclusions from a search box for free.
+//   - title % q (pg_trgm similarity): catches typos in a short title that a
+//     stemmed tsquery match would otherwise miss outright. Deliberately
+//     scoped to title, not extracted_text — see 0003_search_fts.sql.
+// rank is the better of the two signals; with no q, results fall back to
+// most-recently-updated (mirrors the old match_all query).
+export async function searchDocumentCandidates({ q, caseId, docType, classification, tags, limit }) {
+  const conditions = [sql`deleted_at is null`];
+  if (caseId) conditions.push(sql`case_id = ${caseId}`);
+  if (docType) conditions.push(sql`doc_type = ${docType}`);
+  if (classification) conditions.push(sql`classification = ${classification}`);
+  if (tags?.length) conditions.push(sql`tags && ${tags}`);
+
+  let rankExpr = sql`0`;
+  if (q) {
+    conditions.push(sql`(
+      search_vector @@ websearch_to_tsquery('english', ${q})
+      or title % ${q}
+    )`);
+    rankExpr = sql`greatest(
+      ts_rank(search_vector, websearch_to_tsquery('english', ${q})),
+      similarity(title, ${q}) * 0.5
+    )`;
+  }
+
+  const where = sql.join(conditions, sql` and `);
+
+  const result = await db.execute(sql`
+    select
+      id,
+      title,
+      doc_type as "docType",
+      classification,
+      tags,
+      case_id as "caseId",
+      (${rankExpr}) as rank
+    from documents
+    where ${where}
+    order by rank desc, updated_at desc
+    limit ${limit}
+  `);
+  return result.rows ?? result;
+}

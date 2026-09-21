@@ -11,8 +11,7 @@ import {
   createAnchorFailureHandler,
 } from "./jobs/ledgerAnchor.processor.js";
 import { storage } from "./storage/index.js";
-import { indexDocumentVersion } from "./services/search.service.js";
-import { ensureDocumentsIndex } from "./search/documents.index.js";
+import { updateDocumentSearchIndex } from "./services/search.service.js";
 import {
   createDocumentProcessingProcessor,
   createProcessingFailureHandler,
@@ -91,7 +90,7 @@ const processingDeps = {
   recordAudit,
   AuditAction,
   TargetType,
-  indexDocumentVersion,
+  updateDocumentSearchIndex,
   maxFileBytes: config.processing.maxFileBytes,
   scanner: createClamAvScanner(config.processing.clamav),
   extractText,
@@ -139,12 +138,6 @@ processingWorker.on("failed", async (job, err) => {
 processingWorker.on("error", (err) => {
   console.error("[processing] worker error:", err?.message ?? err);
 });
-
-// Make sure the OpenSearch index exists before the first job tries to write to
-// it (the API does the same at boot, but the worker can start first).
-ensureDocumentsIndex().catch((err) =>
-  console.error("[processing] ensureDocumentsIndex failed:", err?.message ?? err),
-);
 
 const processingReconciler = startProcessingReconciler();
 

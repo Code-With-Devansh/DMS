@@ -64,8 +64,6 @@ ClamAV signatures — a couple minutes):
 ```bash
 docker compose -f docker-compose.dev.yml ps
 #  clamav   ... healthy
-#  ocr      ... healthy (or "running" if no port published)
-#  opensearch ... healthy
 #  worker   ... running
 
 docker compose -f docker-compose.dev.yml logs worker --tail 20

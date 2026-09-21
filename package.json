@@ -24,7 +24,6 @@
     "@aws-sdk/s3-request-presigner": "3.930.0",
     "@grpc/grpc-js": "^1.11.0",
     "@hyperledger/fabric-gateway": "^1.7.0",
-    "@opensearch-project/opensearch": "^2.13.0",
     "argon2": "^0.45.1",
     "bullmq": "^6.2.1",
     "clamscan": "^2.4.0",

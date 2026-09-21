@@ -15,6 +15,13 @@
       "when": 1789230439514,
       "tag": "0002_version_control",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789230439515,
+      "tag": "0003_search_fts",
+      "breakpoints": true
     }
   ]
 }

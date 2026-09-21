@@ -9,7 +9,7 @@ Upload API ──▶ Object storage ──▶ BullMQ queue ──▶ Processing 
                                                      ├── 3. NER (entity extraction)
                                                      └── 4. Auto-tagging
                                                               │
-                                                     PostgreSQL  +  OpenSearch
+                                                     PostgreSQL (incl. full-text search)
                                                               │
                                                    REST API · full-text search · UI
 ```
@@ -73,8 +73,9 @@ swappable; the worker never touches a file until ClamAV clears it.
      status, error.
    - `document_entities` — normalized NER output, one row per mention.
    - `documents.tags` — plain tag strings unioned in (existing column).
-   - OpenSearch `dms-documents` — `extractedText` + `entities` + `tags` fields
-     become populated (they were indexed empty before).
+   - `documents.extracted_text` + `documents.entities` + `documents.tags` —
+     become populated (they fed an empty `search_vector` before), which is
+     what actually drives search relevance now (see 0003_search_fts.sql).
 
 6. **Read** — `GET /documents/:id/versions/:vid/extraction` returns the results;
    `GET /search` now matches on extracted text and entities.
@@ -112,7 +113,7 @@ swappable; the worker never touches a file until ClamAV clears it.
 | `src/jobs/documentProcessing.queue.js` | M | `enqueueDocumentProcessing({versionId,documentId,caseId,actor,storageKey,mimeType})`. Config-driven job opts, `jobId = versionId`, fail-open. Was a stub that nothing called. |
 | `src/jobs/documentProcessing.processor.js` | M | The heart. `createDocumentProcessingProcessor(deps)` → runs the 4 stages + state machine + audit + index; `createProcessingFailureHandler(deps)` → terminal failure. Previously 4 empty stub functions. |
 | `src/jobs/documentProcessing.reconcile.js` | **N** | `reconcileStuckProcessing()` re-enqueues versions stuck non-terminal > `stuckAfterMs`; `startProcessingReconciler()` runs it on an interval. Mirrors the ledger's pending-anchor sweeper. |
-| `src/worker.js` | M | Constructs the 2nd `Worker`, injects all real collaborators into the processor, wires `completed`/`failed`/`error` listeners + terminal-failure handler, calls `ensureDocumentsIndex()`, starts the reconciler, extends graceful shutdown. |
+| `src/worker.js` | M | Constructs the 2nd `Worker`, injects all real collaborators into the processor, wires `completed`/`failed`/`error` listeners + terminal-failure handler, starts the reconciler, extends graceful shutdown. |
 
 ### D. Stage 1 — virus scan (1)
 
@@ -164,7 +165,7 @@ swappable; the worker never touches a file until ClamAV clears it.
 
 | File | M/N | Significance |
 |------|-----|--------------|
-| `docker-compose.dev.yml` | M | Adds `clamav` (image `clamav/clamav:1.3`, healthcheck) service; worker builds from `dockerfile.worker.dev` and gains MinIO + OpenSearch + `CLAMAV_*` env and `depends_on` it; new named volume `clamav_data`. No `ocr` service — OCR is in-process in the worker. |
+| `docker-compose.dev.yml` | M | Adds `clamav` (image `clamav/clamav:1.3`, healthcheck) service; worker builds from `dockerfile.worker.dev` and gains MinIO + `CLAMAV_*` env and `depends_on` it; new named volume `clamav_data`. No `ocr` service — OCR is in-process in the worker. |
 | `docker-compose.yml` (prod) | M | Same, prod-shaped; worker builds from `Dockerfile.worker`. |
 | `Dockerfile.worker` | **N** | `node:22-alpine` + `tesseract-ocr`, `tesseract-ocr-data-eng`, `poppler-utils` (for `pdftoppm`) — the only difference from the api `Dockerfile`. |
 | `dockerfile.worker.dev` | **N** | Same, dev-shaped (bind-mounted source, `npm ci` at build time). |
@@ -185,10 +186,12 @@ swappable; the worker never touches a file until ClamAV clears it.
 
 ### Untouched but now load-bearing (reference only)
 
-- `src/search/documents.index.js` — the `dms-documents` mapping already had
-  `extractedText` (text) and `entities` (keyword) fields waiting to be filled.
-- `src/services/search.service.js` — `indexDocumentVersion({documentId, versionId,
-  extractedText, entities, tags})` was already called by the processor; it now
+- `drizzle/0003_search_fts.sql` — `documents.extracted_text` / `.entities`
+  columns and the trigger-maintained `search_vector` column were already there
+  waiting
+  to be filled.
+- `src/services/search.service.js` — `updateDocumentSearchIndex({documentId,
+  extractedText, entities})` was already called by the processor; it now
   receives real data.
 - `src/jobs/connection.js` — the shared BullMQ Redis connection.
 - `src/storage/*` — `storage.getObject(key)` streams bytes to the worker.
@@ -216,7 +219,7 @@ services/documents.service.js ──(store bytes)──▶ storage/*  ──▶ 
                                               src/worker.js  (2nd Worker)
                                                         │ injects:
                                                         │  storage, repo, db, recordAudit,
-                                                        │  indexDocumentVersion,
+                                                        │  updateDocumentSearchIndex,
                                                         │  scanner  = processing/clamav.js
                                                         │  extractText = processing/extract/index.js
                                                         │              + processing/ocr/tesseractClient.js ──▶ tesseract/pdftoppm (in-process)
@@ -245,7 +248,7 @@ services/documents.service.js ──(store bytes)──▶ storage/*  ──▶ 
                                   audit_log               (VERSION_PROCESSED)
                                        │
                                        ▼ best-effort
-                        services/search.service.js#indexDocumentVersion ──▶ OpenSearch dms-documents
+                        services/search.service.js#updateDocumentSearchIndex ──▶ Postgres documents (extracted_text/entities)
 
                     jobs/documentProcessing.reconcile.js (setInterval in worker.js)
                         listStuckExtractions() ──▶ re-enqueue stuck versions
@@ -259,8 +262,8 @@ services/documents.service.js#getVersionExtraction
         ▼  repo.getExtractionByVersion + repo.listEntitiesByVersion
 Postgres
 
-routes/search.route.js  GET /search  ──▶ services/search.service.js ──▶ OpenSearch
-        (now matches extractedText + entities)
+routes/search.route.js  GET /search  ──▶ services/search.service.js ──▶ Postgres
+        (documents.search_vector — now matches extractedText + entities too)
 ```
 
 **Dependency-injection boundary:** `documentProcessing.processor.js` and every
@@ -395,7 +398,7 @@ SELECT unnest(enum_range(NULL::processing_status));   -- includes EXTRACTING/TAG
 ### 6.4 Run the stack
 
 ```bash
-npm run dev          # postgres, redis, minio, opensearch, clamav, ocr, migrate, api, worker
+npm run dev          # postgres, redis, minio, clamav, migrate, api, worker
 ```
 
 First `up` builds the Tesseract OCR image (a few minutes) and ClamAV downloads
@@ -668,9 +671,10 @@ no-op.
 - **Transient stage error** (OCR timeout, DB blip) → normal `Error`, BullMQ
   retries ×`PROCESSING_ATTEMPTS`. On the last attempt `createProcessingFailureHandler`
   writes `FAILED` + `error` + audit.
-- **Indexing is best-effort.** An OpenSearch outage logs and returns; it does
-  **not** fail the job or flip a `READY` doc back. The reconciler / a future
-  index sweep catches misses.
+- **Indexing is best-effort.** `updateDocumentSearchIndex` runs in its own
+  try/catch after the main transaction commits; a transient DB error on that
+  UPDATE logs and returns rather than failing the job or flipping a `READY`
+  doc back. The reconciler / a future index sweep catches misses.
 - **Stuck jobs.** `documentProcessing.reconcile.js` runs every
   `PROCESSING_RECONCILE_EVERY_MS`: `listStuckExtractions(cutoff)` → re-enqueue.
   `jobId = versionId` means a job that's actually still running is untouched.

@@ -46,10 +46,10 @@ function makeDeps(overrides = {}) {
   const storage = {
     getObject: async () => ({ body: Readable.from([Buffer.from("hello world")]) }),
   };
-  const indexDocumentVersion = async (a) => { calls.indexed.push(a); };
+  const updateDocumentSearchIndex = async (a) => { calls.indexed.push(a); };
 
   const deps = {
-    storage, repo, db, recordAudit, AuditAction, TargetType, indexDocumentVersion,
+    storage, repo, db, recordAudit, AuditAction, TargetType, updateDocumentSearchIndex,
     scanner: overrides.scanner ?? { scan: async () => ({ clean: true, signature: null, mimeType: "application/pdf" }) },
     extractText: overrides.extractText ?? (async () => ({ text: "Amit Kumar", method: "pdf_native", confidence: null, pageCount: 1 })),
     nerPipeline: overrides.nerPipeline ?? { extract: async () => [{ type: "PERSON", value: "Amit Kumar", confidence: 0.9, source: "regex" }] },
@@ -78,7 +78,11 @@ test("clean file walks SCANNING->EXTRACTING->INDEXING->TAGGING->READY, persists 
   assert.equal(calls.audits.at(-1).action, AuditAction.VERSION_PROCESSED);
   assert.equal(calls.indexed.length, 1);
   assert.equal(calls.indexed[0].extractedText, "Amit Kumar");
-  assert.deepEqual(calls.indexed[0].tags, ["fir"]);
+  assert.equal(calls.indexed[0].documentId, "d-1");
+  // tags are NOT part of the search-index update call: appendDocumentTags()
+  // (asserted above via calls.tags) already wrote them to documents.tags,
+  // and search_vector (trigger-maintained) picks them up from
+  // there automatically — see updateDocumentSearchIndex()'s doc comment.
   assert.equal(result.entitiesFound, 1);
 });
 

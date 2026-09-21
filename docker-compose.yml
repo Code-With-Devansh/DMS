@@ -65,7 +65,6 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
       STORAGE_SSE: ${STORAGE_SSE:-AES256}
-      OPENSEARCH_NODES: ${OPENSEARCH_NODES}
 
   worker:
     build:
@@ -94,7 +93,6 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
       STORAGE_SSE: ${STORAGE_SSE:-AES256}
-      OPENSEARCH_NODES: ${OPENSEARCH_NODES:-http://opensearch:9200}
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
     command: node src/worker.js

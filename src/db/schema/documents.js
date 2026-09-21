@@ -40,6 +40,28 @@ export const documents = pgTable(
     // Nullable: a freshly created document has no version until its first upload.
     currentVersionId: uuid("current_version_id"),
     sealed: boolean("sealed").notNull().default(false),
+
+    // ── search cache (drizzle/0003_search_fts.sql) ──
+    // Denormalized copy of the CURRENT version's OCR/NER output, written by
+    // src/services/search.service.js#updateDocumentSearchIndex (called from
+    // documentProcessing.processor.js once extraction finishes). Mirrors the
+    // old OpenSearch document, which likewise indexed by documentId and
+    // overwrote on every new version — search only ever looks at the latest
+    // version's text, not the full history.
+    //
+    // `search_vector` (tsvector, weighted A=title/B=tags/C=description+
+    // entities/D=extracted_text, GIN-indexed) is maintained by a BEFORE
+    // INSERT/UPDATE trigger created in the raw migration (a plain GENERATED
+    // ALWAYS column doesn't work here — Postgres rejects to_tsvector() as
+    // "not immutable" in that context), so it is deliberately NOT declared
+    // here: the trigger keeps it in sync automatically, the app never writes
+    // to it, and nothing here selects it directly (searchDocumentCandidates
+    // in documents.repo.js reaches it via raw sql instead of the query builder).
+    extractedText: text("extracted_text"),
+    entities: text("entities")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     // Soft delete only — versions are evidence and are never hard-deleted, so a
     // document is retired by stamping deleted_at rather than removing rows.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

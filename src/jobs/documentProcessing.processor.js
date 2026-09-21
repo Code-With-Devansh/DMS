@@ -58,7 +58,7 @@ const identityNormalize = (t) => t ?? "";
  *   recordAudit: Function,
  *   AuditAction: Record<string, string>,
  *   TargetType: Record<string, string>,
- *   indexDocumentVersion: Function,
+ *   updateDocumentSearchIndex: Function,
  *   scanner?: { scan: (buf: Buffer, ctx: object) => Promise<{ clean: boolean, signature: string|null }> },
  *   extractText?: (input: { buffer: Buffer, mimeType: string, fileName: string }) => Promise<{ text: string, method: string, confidence: number|null, pageCount: number|null, mimeType?: string }>,
  *   nerPipeline?: { extract: (text: string) => Promise<Array<object>> },
@@ -74,7 +74,7 @@ export function createDocumentProcessingProcessor({
   recordAudit,
   AuditAction,
   TargetType,
-  indexDocumentVersion,
+  updateDocumentSearchIndex,
   scanner = passThroughScanner,
   extractText = passThroughExtractor,
   nerPipeline = passThroughNer,
@@ -220,16 +220,14 @@ export function createDocumentProcessingProcessor({
       });
     });
 
-    // Best-effort: OpenSearch being briefly unavailable shouldn't fail the whole
-    // job and re-flip a READY document back to FAILED. The reconciliation sweep
-    // catches documents that silently missed indexing.
+    // Best-effort: a transient DB hiccup on this UPDATE shouldn't fail the
+    // whole job and re-flip a READY document back to FAILED. The
+    // reconciliation sweep catches documents that silently missed indexing.
     try {
-      await indexDocumentVersion({
+      await updateDocumentSearchIndex({
         documentId,
-        versionId,
         extractedText: text,
         entities: entityIndexValues(entities),
-        tags: plainTags,
       });
     } catch (err) {
       console.error(
@@ -247,7 +245,7 @@ export function createDocumentProcessingProcessor({
   };
 }
 
-// Flat, de-duplicated entity strings for the OpenSearch `entities` keyword field.
+// Flat, de-duplicated entity strings for the documents.entities search column.
 function entityIndexValues(entities) {
   const out = new Set();
   for (const e of entities) {
