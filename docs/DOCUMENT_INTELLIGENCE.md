@@ -5,7 +5,7 @@ Async post-upload processing for every document version:
 ```
 Upload API ──▶ Object storage ──▶ BullMQ queue ──▶ Processing worker
                                                      ├── 1. ClamAV virus scan
-                                                     ├── 2. Text extraction / PaddleOCR
+                                                     ├── 2. Text extraction / Tesseract OCR
                                                      ├── 3. NER (entity extraction)
                                                      └── 4. Auto-tagging
                                                               │
@@ -21,7 +21,7 @@ swappable; the worker never touches a file until ClamAV clears it.
 - [2. Every file, and why it exists](#2-every-file-and-why-it-exists)
 - [3. How the files connect](#3-how-the-files-connect)
 - [4. Database schema](#4-database-schema)
-- [5. Sidecar services (ClamAV, PaddleOCR)](#5-sidecar-services)
+- [5. ClamAV & OCR](#5-sidecar-services)
 - [6. Setup](#6-setup)
 - [7. Testing](#7-testing)
 - [8. API reference](#8-api-reference)
@@ -62,7 +62,7 @@ swappable; the worker never touches a file until ClamAV clears it.
    | # | Stage | Module | Sets `processing_status` |
    |---|-------|--------|--------------------------|
    | 1 | Virus scan | `processing/clamav.js` | `SCANNING` → (infected) `QUARANTINED` |
-   | 2 | Extraction | `processing/extract/index.js` + `processing/ocr/paddleClient.js` + `processing/normalize.js` | `EXTRACTING` |
+   | 2 | Extraction | `processing/extract/index.js` + `processing/ocr/tesseractClient.js` + `processing/normalize.js` | `EXTRACTING` |
    | 3 | NER | `processing/ner/index.js` + `processing/ner/regexProvider.js` | `INDEXING` |
    | 4 | Auto-tagging | `processing/tagging/index.js` + `processing/tagging/ruleTagger.js` | `TAGGING` |
    | — | Commit + index | processor + `services/search.service.js` | `READY` |
@@ -73,7 +73,7 @@ swappable; the worker never touches a file until ClamAV clears it.
      status, error.
    - `document_entities` — normalized NER output, one row per mention.
    - `documents.tags` — plain tag strings unioned in (existing column).
-   - OpenSearch `pramaanX-documents` — `extractedText` + `entities` + `tags` fields
+   - OpenSearch `dms-documents` — `extractedText` + `entities` + `tags` fields
      become populated (they were indexed empty before).
 
 6. **Read** — `GET /documents/:id/versions/:vid/extraction` returns the results;
@@ -125,7 +125,7 @@ swappable; the worker never touches a file until ClamAV clears it.
 | File | M/N | Significance |
 |------|-----|--------------|
 | `src/processing/normalize.js` | **N** | `normalizeText(raw)` — the single funnel every extractor's output passes through: NFC, strip control/zero-width chars, de-hyphenate OCR line wraps, collapse whitespace, cap blank lines. Keeps casing & punctuation (NER needs them). |
-| `src/processing/ocr/paddleClient.js` | **N** | `createPaddleOcrClient({url,timeoutMs,lang})` → `ocr({buffer,fileName,mimeType})`. `fetch`-based multipart client for the `ocr` sidecar. `AbortController` timeout + one retry (first call races model load). |
+| `src/processing/ocr/tesseractClient.js` | **N** | `createTesseractOcrClient({lang,timeoutMs,dpi,maxPages,binary,pdftoppmBinary})` → `ocr({buffer,fileName,mimeType})`. Shells out to the `tesseract`/`pdftoppm` CLIs in-process (no sidecar) — PDFs rasterized one page at a time to bound memory, TSV output parsed for a mean confidence. |
 | `src/processing/extract/index.js` | **N** | `createExtractor({ocrClient,minCharsPerPage})` → `extractText({buffer,mimeType,fileName})`. Dispatches on sniffed MIME + filename fallback: PDF → `pdf-parse` with a scanned-vs-text heuristic (< `minCharsPerPage` chars/page → OCR fallback, keeping native text as a floor); image → OCR; DOCX → `mammoth`; XLSX/XLS → `xlsx` (per-sheet CSV); txt/csv/md → utf-8; else → `{method:'none', text:''}`. Heavy libs are **lazy `import()`ed**. |
 | `src/processing/extract/index.test.js` | **N** | Dispatch tests (plaintext, image→OCR, extension fallback, unknown→none). |
 
@@ -160,15 +160,14 @@ swappable; the worker never touches a file until ClamAV clears it.
 | `src/routes/documents.route.js` | M | New route `GET /documents/:id/versions/:vid/extraction`. |
 | `src/jobs/documentProcessing.processor.test.js` | **N** | Processor state-machine tests (clean walk, quarantine, transient-error retry, failure handler). |
 
-### J. Sidecar services (5)
+### J. ClamAV sidecar + worker OCR image (4)
 
 | File | M/N | Significance |
 |------|-----|--------------|
-| `docker-compose.dev.yml` | M | Adds `clamav` (image `clamav/clamav:1.3`, healthcheck) and `ocr` (built from `services/ocr/`) services; worker gains MinIO + OpenSearch + `CLAMAV_*` + `OCR_URL` env and `depends_on` those services; new named volumes `clamav_data`, `ocr_models`. |
-| `docker-compose.yml` (prod) | M | Same two services + worker env, prod-shaped. |
-| `services/ocr/Dockerfile` | **N** | `python:3.11-slim` + poppler + `paddleocr`/`paddlepaddle`/`fastapi`. |
-| `services/ocr/requirements.txt` | **N** | Pinned Python deps. |
-| `services/ocr/app.py` | **N** | Tiny FastAPI app: `GET /health`, `POST /ocr` (multipart file + `lang`) → `{text, confidence, pages}`. Handles PDF (via `pdf2image`) and images. Stateless — all orchestration lives in the Node worker. |
+| `docker-compose.dev.yml` | M | Adds `clamav` (image `clamav/clamav:1.3`, healthcheck) service; worker builds from `dockerfile.worker.dev` and gains MinIO + OpenSearch + `CLAMAV_*` env and `depends_on` it; new named volume `clamav_data`. No `ocr` service — OCR is in-process in the worker. |
+| `docker-compose.yml` (prod) | M | Same, prod-shaped; worker builds from `Dockerfile.worker`. |
+| `Dockerfile.worker` | **N** | `node:22-alpine` + `tesseract-ocr`, `tesseract-ocr-data-eng`, `poppler-utils` (for `pdftoppm`) — the only difference from the api `Dockerfile`. |
+| `dockerfile.worker.dev` | **N** | Same, dev-shaped (bind-mounted source, `npm ci` at build time). |
 
 ### K. Normalize test (1)
 
@@ -186,7 +185,7 @@ swappable; the worker never touches a file until ClamAV clears it.
 
 ### Untouched but now load-bearing (reference only)
 
-- `src/search/documents.index.js` — the `pramaanX-documents` mapping already had
+- `src/search/documents.index.js` — the `dms-documents` mapping already had
   `extractedText` (text) and `entities` (keyword) fields waiting to be filled.
 - `src/services/search.service.js` — `indexDocumentVersion({documentId, versionId,
   extractedText, entities, tags})` was already called by the processor; it now
@@ -220,7 +219,7 @@ services/documents.service.js ──(store bytes)──▶ storage/*  ──▶ 
                                                         │  indexDocumentVersion,
                                                         │  scanner  = processing/clamav.js
                                                         │  extractText = processing/extract/index.js
-                                                        │              + processing/ocr/paddleClient.js ──▶ ocr sidecar
+                                                        │              + processing/ocr/tesseractClient.js ──▶ tesseract/pdftoppm (in-process)
                                                         │  normalizeText = processing/normalize.js
                                                         │  nerPipeline = processing/ner/index.js
                                                         │              + processing/ner/regexProvider.js
@@ -229,7 +228,7 @@ services/documents.service.js ──(store bytes)──▶ storage/*  ──▶ 
                                                         ▼
                                     jobs/documentProcessing.processor.js
                                        │ stage 1  scanner.scan(buf) ─────────▶ clamav sidecar (TCP 3310)
-                                       │ stage 2  extractText(...)   ─────────▶ pdf-parse / mammoth / xlsx / ocr sidecar
+                                       │ stage 2  extractText(...)   ─────────▶ pdf-parse / mammoth / xlsx / tesseract (in-process)
                                        │ stage 3  nerPipeline.extract(text)
                                        │ stage 4  tagger.tag({text,entities,doc})
                                        │ each step:
@@ -246,7 +245,7 @@ services/documents.service.js ──(store bytes)──▶ storage/*  ──▶ 
                                   audit_log               (VERSION_PROCESSED)
                                        │
                                        ▼ best-effort
-                        services/search.service.js#indexDocumentVersion ──▶ OpenSearch pramaanX-documents
+                        services/search.service.js#indexDocumentVersion ──▶ OpenSearch dms-documents
 
                     jobs/documentProcessing.reconcile.js (setInterval in worker.js)
                         listStuckExtractions() ──▶ re-enqueue stuck versions
@@ -288,12 +287,12 @@ Migration: `drizzle/0003_document_intelligence.sql` — run with `npm run migrat
 | `version_id` | uuid **unique** FK→`document_versions` | idempotency key; processor upserts on it |
 | `document_id` | uuid FK→`documents` | denormalized |
 | `status` | `processing_status` | per-stage mirror of the version's status |
-| `extraction_method` | text | `pdf_native` \| `ocr_paddle` \| `docx` \| `xlsx` \| `plaintext` \| `none` |
+| `extraction_method` | text | `pdf_native` \| `ocr_tesseract` \| `docx` \| `xlsx` \| `plaintext` \| `none` |
 | `mime_type` | text | **sniffed** type (may differ from client-declared) |
 | `extracted_text` | text | normalized |
 | `text_chars` | integer | |
 | `page_count` | integer null | |
-| `ocr_confidence` | numeric(5,4) null | mean OCR confidence when `ocr_paddle` |
+| `ocr_confidence` | numeric(5,4) null | mean OCR confidence when `ocr_tesseract` |
 | `tags` | jsonb `[]` | `[{tag,confidence,source}]` provenance |
 | `scanned_clean` | boolean | ClamAV verdict; stays false until the scan passes |
 | `virus_signature` | text null | set on `QUARANTINED` |
@@ -322,7 +321,7 @@ Re-run = **delete all rows for `version_id`, then re-insert** (idempotent).
 
 ---
 
-## 5. Sidecar services
+## 5. ClamAV & OCR
 
 ### `clamav` (docker-compose service)
 
@@ -333,17 +332,22 @@ Re-run = **delete all rows for `version_id`, then re-insert** (idempotent).
   `zINSTREAM` protocol — no `clamscan` binary in the worker image.
 - Volume `clamav_data` persists the signature DBs across restarts.
 
-### `ocr` (docker-compose service, built from `services/ocr/`)
+### OCR (in-process in the `worker` container — no sidecar)
 
-- FastAPI + PaddleOCR, CPU-only, port **8000** (internal only), **no outbound
-  network** needed at runtime.
-- `POST /ocr` — multipart `file` (+ optional `lang` form field) → JSON
-  `{ text, confidence, pages }`. PDFs are rasterized page-by-page with
-  `pdf2image`/poppler; images go straight in.
-- `GET /health` — used by the compose healthcheck.
-- Models download to `/root/.paddleocr` on the **first** OCR request; the
-  `ocr_models` volume persists them.
-- The Node worker calls it via `src/processing/ocr/paddleClient.js`.
+- `src/processing/ocr/tesseractClient.js` shells out to the `tesseract` and
+  `pdftoppm` CLIs directly (`node:child_process`) instead of calling a
+  separate service. There is no `ocr` container, no model-download volume,
+  and no network hop between the worker and OCR.
+- `Dockerfile.worker` / `dockerfile.worker.dev` install `tesseract-ocr`,
+  `tesseract-ocr-data-eng`, and `poppler-utils` (for `pdftoppm`) on top of the
+  base Node image — a few tens of MB total, vs. PaddleOCR's
+  paddlepaddle/opencv/numpy stack and its own multi-hundred-MB-to-GB sidecar.
+- PDFs are rasterized **one page at a time** (`pdftoppm -f N -l N`) so peak
+  memory stays ~1 page, the same reason the old sidecar did it that way.
+- No models to download on first use — `tesseract-ocr-data-eng` ships baked
+  into the image, so first-request latency is just process startup.
+- Add more `tesseract-ocr-data-<lang>` packages to the worker Dockerfiles and
+  set `OCR_LANG` (e.g. `eng+hin`) for additional languages.
 
 ---
 
@@ -369,7 +373,6 @@ baked in; the ones you might change:
 PROCESSING_ENABLED=true          # master switch (false = uploads skip the pipeline)
 PROCESSING_CONCURRENCY=2
 CLAMAV_HOST=clamav
-OCR_URL=http://ocr:8000
 OCR_MIN_CHARS_PER_PAGE=100       # PDF scanned-vs-text threshold
 NER_PROVIDERS=regex              # comma-separated, ordered
 TAGGING_PIPELINE=rules
@@ -395,7 +398,7 @@ SELECT unnest(enum_range(NULL::processing_status));   -- includes EXTRACTING/TAG
 npm run dev          # postgres, redis, minio, opensearch, clamav, ocr, migrate, api, worker
 ```
 
-First `up` builds the PaddleOCR image (a few minutes) and ClamAV downloads
+First `up` builds the Tesseract OCR image (a few minutes) and ClamAV downloads
 signatures. Watch readiness:
 
 ```bash
@@ -472,13 +475,13 @@ curl -s -b $C "http://localhost:3000/api/v1/documents/$DOC/versions/$VID/extract
 #    "entities":[...], "tags":[{"tag":"fir",...}], ... }
 ```
 
-**B. Scanned PDF / image → PaddleOCR**
+**B. Scanned PDF / image → Tesseract OCR**
 
 ```bash
 curl -s -b $C -F file=@scanned.png \
   -F 'metadata={"title":"Scanned statement","docType":"WITNESS_STATEMENT","classification":"RESTRICTED"}' \
   http://localhost:3000/api/v1/cases/$CASE/documents | jq
-# extraction.method == "ocr_paddle", extraction.ocrConfidence is a number
+# extraction.method == "ocr_tesseract", extraction.ocrConfidence is a number
 ```
 
 **C. DOCX / XLSX → native parsers** — upload a `.docx` / `.xlsx`, expect
@@ -576,11 +579,11 @@ Request: multipart, field `file` (binary) + field `metadata` (JSON:
   "versionId": "…",
   "processingStatus": "READY",        // from document_versions
   "status": "READY",                  // from document_extractions (per-stage)
-  "method": "pdf_native",             // pdf_native|ocr_paddle|docx|xlsx|plaintext|none
+  "method": "pdf_native",             // pdf_native|ocr_tesseract|docx|xlsx|plaintext|none
   "mimeType": "application/pdf",      // sniffed
   "textChars": 4210,
   "pageCount": 3,
-  "ocrConfidence": null,              // number in [0,1] when method=ocr_paddle
+  "ocrConfidence": null,              // number in [0,1] when method=ocr_tesseract
   "scannedClean": true,
   "virusSignature": "…",              // only when QUARANTINED
   "error": "…",                       // only when FAILED
@@ -623,9 +626,10 @@ entities: [], tags: [] }`.
 | `PROCESSING_MAX_FILE_BYTES` | `UPLOAD_MAX_BYTES` / 50 MiB | Largest file the pipeline will read (stream cap). |
 | `CLAMAV_HOST` / `CLAMAV_PORT` | `clamav` / `3310` | clamd address. |
 | `CLAMAV_TIMEOUT_MS` | `30000` | Socket timeout. |
-| `OCR_URL` | `http://ocr:8000` | PaddleOCR sidecar. |
-| `OCR_TIMEOUT_MS` | `120000` | Per-request timeout. |
-| `OCR_LANG` | `en` | PaddleOCR language. |
+| `OCR_LANG` | `eng` | Tesseract language code(s), e.g. `eng` or `eng+hin`. |
+| `OCR_DPI` | `150` | PDF rasterization DPI for OCR — lower is faster/lighter, worse on small print. |
+| `OCR_MAX_PAGES` | `50` | Hard cap on pages OCR'd per document. |
+| `OCR_TIMEOUT_MS` | `120000` | Per-subprocess-call timeout. |
 | `OCR_MIN_CHARS_PER_PAGE` | `100` | Below this native-text density, a PDF is treated as scanned. |
 | `NER_PROVIDERS` | `regex` | Ordered, comma-separated provider ids. |
 | `TAGGING_PIPELINE` | `rules` | Ordered, comma-separated tagger ids. |
@@ -750,10 +754,10 @@ git add src/jobs/documentProcessing.processor.js \
 git commit -m "feat(worker): document-intelligence processor, failure handler, stuck-job reconciler"
 ```
 
-**Block 5 — sidecar services**
+**Block 5 — ClamAV sidecar + worker OCR deps**
 ```
-git add docker-compose.dev.yml docker-compose.yml services/ocr/
-git commit -m "feat(infra): clamav + paddleocr sidecar services"
+git add docker-compose.dev.yml docker-compose.yml Dockerfile.worker dockerfile.worker.dev
+git commit -m "feat(infra): clamav sidecar + in-process tesseract/poppler in worker image"
 ```
 
 **Block 6 — stage 1: ClamAV**
@@ -765,9 +769,9 @@ git commit -m "feat(processing): ClamAV INSTREAM scanner + magic-byte type allow
 **Block 7 — stage 2: extraction**
 ```
 git add src/processing/normalize.js src/processing/normalize.test.js \
-        src/processing/ocr/paddleClient.js \
+        src/processing/ocr/tesseractClient.js \
         src/processing/extract/index.js src/processing/extract/index.test.js
-git commit -m "feat(processing): text extraction (pdf/docx/xlsx/plaintext) + PaddleOCR + normalization"
+git commit -m "feat(processing): text extraction (pdf/docx/xlsx/plaintext) + Tesseract OCR + normalization"
 ```
 
 **Block 8 — stage 3: NER**

@@ -3,7 +3,7 @@ import config from "../config/index.js";
 import { connection } from "./connection.js";
 
 // Producer side of the post-upload document-intelligence pipeline (DESIGN §11):
-// ClamAV -> text extraction / PaddleOCR -> NER -> auto-tagging, driving
+// ClamAV -> text extraction / Tesseract OCR -> NER -> auto-tagging, driving
 // document_versions.processing_status through
 // SCANNING -> EXTRACTING -> INDEXING -> TAGGING -> READY (or QUARANTINED/FAILED).
 // Mirrors src/jobs/ledger.queue.js. The consumer lives in

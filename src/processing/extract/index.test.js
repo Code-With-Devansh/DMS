@@ -34,7 +34,7 @@ test("images go straight to OCR", async () => {
     mimeType: "image/png",
     fileName: "scan.png",
   });
-  assert.equal(out.method, "ocr_paddle");
+  assert.equal(out.method, "ocr_tesseract");
   assert.equal(out.text, "OCR TEXT");
   assert.equal(out.confidence, 0.87);
   assert.equal(calls.length, 1);
@@ -48,7 +48,7 @@ test("dispatch falls back to filename extension when mime is generic", async () 
     mimeType: "application/octet-stream",
     fileName: "photo.jpeg",
   });
-  assert.equal(out.method, "ocr_paddle");
+  assert.equal(out.method, "ocr_tesseract");
   assert.equal(calls.length, 1);
 });
 

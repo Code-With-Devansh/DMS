@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Generate synthetic "scanned document" test fixtures for the OCR stage of the
-document-intelligence pipeline (src/processing/extract, PaddleOCR sidecar).
+document-intelligence pipeline (src/processing/extract, Tesseract OCR).
 
 These are RASTER images (and a PDF built from one) with no embedded text layer,
 so they exercise the real OCR path end to end:
-  - the .png is uploaded directly            -> extraction_method = ocr_paddle
+  - the .png is uploaded directly            -> extraction_method = ocr_tesseract
   - the .pdf has zero native text             -> pdf-parse finds ~0 chars/page,
                                                   processor falls back to OCR too
 
@@ -66,7 +66,7 @@ def main():
 
     png_path = out_dir / "scanned-sample.png"
     img.save(png_path)
-    print(f"wrote {png_path}  (upload as image/png -> forces PaddleOCR)")
+    print(f"wrote {png_path}  (upload as image/png -> forces OCR)")
 
     pdf_path = out_dir / "scanned-sample.pdf"
     img.save(pdf_path, "PDF", resolution=150.0)

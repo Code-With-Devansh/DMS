@@ -19,7 +19,7 @@ import {
 } from "./jobs/documentProcessing.processor.js";
 import { startProcessingReconciler } from "./jobs/documentProcessing.reconcile.js";
 import { createClamAvScanner } from "./processing/clamav.js";
-import { createPaddleOcrClient } from "./processing/ocr/paddleClient.js";
+import { createTesseractOcrClient } from "./processing/ocr/tesseractClient.js";
 import { createExtractor } from "./processing/extract/index.js";
 import { normalizeText } from "./processing/normalize.js";
 import { createNerPipeline } from "./processing/ner/index.js";
@@ -28,7 +28,7 @@ import { createTagger } from "./processing/tagging/index.js";
 // Ledger-anchoring worker process. Consumes the jobs enqueued by
 // src/jobs/ledger.queue.js (enqueueLedgerAnchor) and drives each version's
 // ledger_status from PENDING_LEDGER to ANCHORED (or FAILED after retries).
-// Runs as its own container (pramaanX-worker) so slow/unreachable ledger calls never
+// Runs as its own container (DMS-worker) so slow/unreachable ledger calls never
 // touch the API request path.
 
 const deps = { ledger, repo, db, recordAudit, AuditAction, TargetType };
@@ -74,11 +74,11 @@ worker.on("error", (err) => {
 
 // ── Document-intelligence pipeline worker ────────────────────────────────────
 // Consumes src/jobs/documentProcessing.queue.js: ClamAV -> text extraction /
-// PaddleOCR -> NER -> auto-tagging, driving document_versions.processing_status
+// Tesseract OCR -> NER -> auto-tagging, driving document_versions.processing_status
 // to READY (or QUARANTINED/FAILED). The per-stage collaborators (scanner /
 // extractText / nerPipeline / tagger) are added incrementally; until wired the
 // processor's pass-through defaults apply.
-const ocrClient = createPaddleOcrClient(config.processing.ocr);
+const ocrClient = createTesseractOcrClient(config.processing.ocr);
 const { extractText } = createExtractor({
   ocrClient,
   minCharsPerPage: config.processing.ocr.minCharsPerPage,

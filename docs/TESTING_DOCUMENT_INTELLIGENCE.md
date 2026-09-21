@@ -52,13 +52,14 @@ scanners/mirrors flag the pattern on sight even though it's inert.
 ## 1. Start the stack
 
 ```bash
-cd /path/to/pramaanX
+cd /path/to/DMS
 cp .env.example .env   # if you don't already have one; fill in secrets as needed
 npm run dev
 ```
 
-Wait for everything to come up (first run builds the PaddleOCR image and
-downloads ClamAV signatures — a few minutes):
+Wait for everything to come up (first run builds the worker image — now with
+`tesseract-ocr`/`poppler-utils` baked in, no model download — and downloads
+ClamAV signatures — a couple minutes):
 
 ```bash
 docker compose -f docker-compose.dev.yml ps
@@ -165,7 +166,7 @@ You now have, all under `test/fixtures/document-intelligence/` (gitignored):
 |------|---------|
 | `safe-sample.txt` | clean file → full pipeline → `READY` |
 | `eicar-test-file.txt` | ClamAV-detected → `QUARANTINED` |
-| `scanned-sample.png` | image → forces PaddleOCR |
+| `scanned-sample.png` | image → forces Tesseract OCR |
 | `scanned-sample.pdf` | rasterized PDF, ~0 native text → OCR fallback |
 
 ---
@@ -316,14 +317,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 DOC3=$(jq -r .id /tmp/doc3.json); VID3=$(jq -r .currentVersionId /tmp/doc3.json)
 ```
 
-This one takes longer the **first** time (PaddleOCR downloads its models on
-first use inside the `ocr` container — watch `docker compose logs -f ocr`).
-Poll until `READY`, then:
+OCR now runs in-process in the `worker` container (no separate `ocr` service),
+so there's no first-request model-download delay — it should complete about as
+fast as any other job. Poll until `READY`, then:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$API/documents/$DOC3/versions/$VID3/extraction" | jq '{status, method, ocrConfidence, textChars}'
-#  { "status": "READY", "method": "ocr_paddle", "ocrConfidence": 0.9x, "textChars": ~250 }
+#  { "status": "READY", "method": "ocr_tesseract", "ocrConfidence": 0.9x, "textChars": ~250 }
 
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$API/documents/$DOC3/versions/$VID3/extraction?includeText=true" | jq -r .text
@@ -332,7 +333,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 Repeat with `scanned-sample.pdf` (same `metadata`, different `-F file=@...`) —
-expect `method: "ocr_paddle"` again (pdf-parse sees ~0 native chars/page on a
+expect `method: "ocr_tesseract"` again (pdf-parse sees ~0 native chars/page on a
 purely rasterized PDF, so the processor falls back to OCR automatically) and a
 `pageCount` of 1.
 
@@ -436,11 +437,11 @@ anything under `src/processing/` — they run in under a second and don't need
 | `401 Unauthorized` on every request | token expired (15 min default) or you forgot to `export TOKEN=...` | rerun `scripts/dev-seed.mjs` |
 | `403 Forbidden` on upload | wrong `$CASE`, or you're not using the token from the last `dev-seed.mjs` run | re-export the printed `TOKEN`/`CASE` |
 | stuck on `SCANNING` forever | `clamav` container not healthy yet | `docker compose ps`; wait for `clamav` healthy (first-boot signature download can take ~2 min) |
-| stuck on `EXTRACTING` for scanned files | `ocr` container still downloading PaddleOCR models (first call only) | `docker compose logs -f ocr` |
+| stuck on `EXTRACTING` for scanned files | `tesseract`/`pdftoppm` missing from the worker image (rebuild it) or a huge/corrupt PDF hitting `OCR_TIMEOUT_MS`/`OCR_MAX_PAGES` | `docker compose logs -f worker`; `docker compose exec worker tesseract --version` |
 | `document_extractions` has no row | worker never picked up the job — check `PROCESSING_ENABLED=true` and that `worker` is running and connected to the same Redis as `api` | `docker compose logs worker`; check `REDIS_URL` matches on both services |
 | EICAR upload doesn't quarantine | ClamAV signatures didn't finish downloading, or you saved the string with different bytes (must be the exact 68-byte EICAR string, no CRLF/trailing content added) | `wc -c test/fixtures/document-intelligence/eicar-test-file.txt` → must print `68`; `docker compose exec clamav clamdscan --version` |
 | `scripts/generate-ocr-samples.py` errors on font | no truetype font found on the host | install `fonts-dejavu` (`apt install fonts-dejavu-core`) or edit `FONT_CANDIDATES` in the script to point at any `.ttf` you have |
-| `scripts/dev-seed.mjs` fails with a unique-constraint error | ran before a previous partial run committed inconsistent rows | the script is idempotent by design (`ON CONFLICT DO NOTHING` + re-select) — rerunning is safe; if it still fails, `docker compose exec postgres psql -U postgres -d pramaanX` and inspect `orgs`/`jurisdictions`/`users`/`cases` for the demo rows |
+| `scripts/dev-seed.mjs` fails with a unique-constraint error | ran before a previous partial run committed inconsistent rows | the script is idempotent by design (`ON CONFLICT DO NOTHING` + re-select) — rerunning is safe; if it still fails, `docker compose exec postgres psql -U postgres -d DMS` and inspect `orgs`/`jurisdictions`/`users`/`cases` for the demo rows |
 
 ---
 

@@ -100,10 +100,17 @@ export default {
       timeoutMs: Number(process.env.CLAMAV_TIMEOUT_MS) || 30_000,
     },
     ocr: {
-      // Sidecar PaddleOCR HTTP service (services/ocr/).
-      url: process.env.OCR_URL || "http://ocr:8000",
+      // In-process Tesseract client (src/processing/ocr/tesseractClient.js).
+      // No sidecar/container — runs the `tesseract` + `pdftoppm` binaries
+      // directly in the worker, which is what keeps this light enough for a
+      // low-spec host.
+      lang: process.env.OCR_LANG || "eng",
       timeoutMs: Number(process.env.OCR_TIMEOUT_MS) || 120_000,
-      lang: process.env.OCR_LANG || "en",
+      // Lower DPI = faster/lighter OCR at the cost of accuracy on tiny print.
+      dpi: Number(process.env.OCR_DPI) || 150,
+      maxPages: Number(process.env.OCR_MAX_PAGES) || 50,
+      binary: process.env.OCR_BINARY || "tesseract",
+      pdftoppmBinary: process.env.OCR_PDFTOPPM_BINARY || "pdftoppm",
       // A PDF whose native text yields fewer than this many chars per page is
       // treated as scanned and sent to OCR.
       minCharsPerPage: Number(process.env.OCR_MIN_CHARS_PER_PAGE) || 100,

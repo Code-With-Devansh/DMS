@@ -4,10 +4,11 @@
 //
 //   { text, method, confidence, pageCount, mimeType }
 //
-//   method: pdf_native | ocr_paddle | docx | xlsx | plaintext | none
+//   method: pdf_native | ocr_tesseract | docx | xlsx | plaintext | none
 //
 // Native parsers are tried first; a PDF that yields too little text per page is
-// assumed to be scanned and handed to PaddleOCR. Heavy parser libs are loaded
+// assumed to be scanned and handed to the OCR client (Tesseract, in-process in
+// the worker — see src/processing/ocr/tesseractClient.js). Heavy parser libs are loaded
 // lazily so this module imports cleanly in unit tests without them, and a
 // missing lib for one format never breaks the others.
 
@@ -65,7 +66,7 @@ export function createExtractor({ ocrClient, minCharsPerPage = 100 }) {
 
   async function fromOcr({ buffer, fileName, mimeType }) {
     const { text, confidence, pageCount } = await ocrClient.ocr({ buffer, fileName, mimeType });
-    return { text: text ?? "", method: "ocr_paddle", confidence, pageCount, mimeType };
+    return { text: text ?? "", method: "ocr_tesseract", confidence, pageCount, mimeType };
   }
 
   async function fromDocx({ buffer, mimeType }) {

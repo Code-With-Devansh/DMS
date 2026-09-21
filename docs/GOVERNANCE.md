@@ -1,4 +1,4 @@
-# pramaanX Governance & Admin Hierarchy — Architecture
+# DMS Governance & Admin Hierarchy — Architecture
 
 Companion to `DESIGN.md` §7 (Governance & Admin Model). This document specifies
 **how the admin hierarchy is bootstrapped, how it governs itself day-to-day, and

@@ -156,7 +156,7 @@ export function createDocumentProcessingProcessor({
     );
     await setStatus(db, repo, { versionId, status: "EXTRACTING" });
 
-    // ── Stage 2: text extraction (native parsers / PaddleOCR). ──────────────
+    // ── Stage 2: text extraction (native parsers / Tesseract OCR). ──────────────
     const extraction = await extractText({
       buffer,
       mimeType: scan?.mimeType ?? version.mimeType,

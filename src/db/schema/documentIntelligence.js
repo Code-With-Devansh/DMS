@@ -41,7 +41,7 @@ export const documentExtractions = pgTable(
     // here so a single read of this row tells the whole pipeline story.
     status: processingStatus("status").notNull().default("SCANNING"),
 
-    // How the text was obtained: pdf_native | ocr_paddle | docx | xlsx |
+    // How the text was obtained: pdf_native | ocr_tesseract | docx | xlsx |
     // plaintext | none. Plain text (not an enum) so a new extractor doesn't
     // need a migration.
     extractionMethod: text("extraction_method"),
@@ -52,7 +52,7 @@ export const documentExtractions = pgTable(
     extractedText: text("extracted_text"),
     textChars: integer("text_chars").notNull().default(0),
     pageCount: integer("page_count"),
-    // Mean OCR confidence in [0,1] when extraction_method = ocr_paddle.
+    // Mean OCR confidence in [0,1] when extraction_method = ocr_tesseract.
     ocrConfidence: numeric("ocr_confidence", { precision: 5, scale: 4 }),
 
     // Tag provenance: [{ tag, confidence, source }]. The plain tag strings are
