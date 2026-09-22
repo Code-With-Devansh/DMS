@@ -31,7 +31,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
+  migrate:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      container_name: DMS-migrate
+      restart: "no"
+      env_file: .env
+      depends_on:
+        postgres:
+          condition: service_healthy
+      networks:
+        - internal
+      environment:
+        DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
+      command: npx drizzle-kit migrate
   api:
     build:
       context: .
@@ -45,7 +59,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./.fabric-crypto:/fabric/crypto:ro
     ports:
       - "3000:3000"
     networks:
@@ -78,6 +95,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
       # No `clamav:` entry — it's no longer a service on this compose file/host.
       # It runs on its own VM (docker-compose.clamav.yml); reachability is
       # verified at runtime by the fail-closed scan() contract in
@@ -85,6 +104,8 @@ services:
       # not by a compose healthcheck that can't reach across hosts. Run
       # `node scripts/check-clamav.js` after deploying to confirm connectivity
       # before relying on it.
+    volumes:
+      - ./.fabric-crypto:/fabric/crypto:ro
     networks:
       - internal
     environment:
