@@ -67,6 +67,7 @@ services:
       - "3000:3000"
     networks:
       - internal
+      - fabric
     environment:
       PORT: 3000
 
@@ -108,6 +109,7 @@ services:
       - ./.fabric-crypto:/fabric/crypto:ro
     networks:
       - internal
+      - fabric
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/DMS
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -132,3 +134,7 @@ volumes:
 networks:
   internal:
     driver: bridge
+
+  fabric:
+    external: true
+    name: fabric_test
