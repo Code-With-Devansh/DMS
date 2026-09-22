@@ -18,11 +18,11 @@ import { errorHandler } from "./middlewares/error.js";
 import { requireAuth } from './middlewares/auth.js';
 import { attachRealtimeServer } from "./realtime/server.js";
 import redisClient from "./config/redis.js";
-
+import config from './config/index.js';
 const app = express();
 const port = 3000;
 app.use(cors({
-    origin: "http://localhost:5173", // React/Vite app
+    origin: config.app.corsOrigin, // React/Vite app
     credentials: true,
   }))
 app.use(express.json());
