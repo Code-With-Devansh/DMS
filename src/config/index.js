@@ -94,10 +94,22 @@ export default {
       Number(process.env.PROCESSING_MAX_FILE_BYTES) ||
       Number(process.env.UPLOAD_MAX_BYTES) ||
       52_428_800,
+    // Local ClamAV daemon (src/processing/clamav.js) — the default scanner.
+    // src/processing/cloudmersiveScanner.js is still in the tree as a
+    // prototype-only alternative (see virusScan below) but nothing wires it
+    // up unless you swap the import in worker.js back.
     clamav: {
       host: process.env.CLAMAV_HOST || "clamav",
       port: Number(process.env.CLAMAV_PORT) || 3310,
       timeoutMs: Number(process.env.CLAMAV_TIMEOUT_MS) || 30_000,
+    },
+    // PROTOTYPE, currently unused: Cloudmersive's hosted scan API — see
+    // src/processing/cloudmersiveScanner.js for the trade-offs if you want to
+    // swap back to it (worker.js currently uses createClamAvScanner).
+    virusScan: {
+      apiKey: process.env.CLOUDMERSIVE_API_KEY,
+      url: process.env.CLOUDMERSIVE_URL || "https://api.cloudmersive.com/virus/scan/file",
+      timeoutMs: Number(process.env.CLOUDMERSIVE_TIMEOUT_MS) || 30_000,
     },
     ocr: {
       // In-process Tesseract client (src/processing/ocr/tesseractClient.js).
@@ -114,6 +126,18 @@ export default {
       // A PDF whose native text yields fewer than this many chars per page is
       // treated as scanned and sent to OCR.
       minCharsPerPage: Number(process.env.OCR_MIN_CHARS_PER_PAGE) || 100,
+    },
+    // PROTOTYPE: cloud OCR fallback (src/processing/ocr/cloudOcrClient.js +
+    // fallbackOcrClient.js) for documents Tesseract reads with low confidence.
+    // Only wired up in worker.js if apiKey is set — leave unset to keep OCR
+    // fully local.
+    ocrCloud: {
+      apiKey: process.env.OCR_CLOUD_API_KEY,
+      url: process.env.OCR_CLOUD_URL || "https://api4ai.cloud/ocr/v1/results",
+      timeoutMs: Number(process.env.OCR_CLOUD_TIMEOUT_MS) || 60_000,
+      // Escalate to the cloud API when Tesseract's mean word confidence is
+      // below this (0-1), or when it detected no words at all.
+      confidenceThreshold: Number(process.env.OCR_CLOUD_CONFIDENCE_THRESHOLD) || 0.6,
     },
     // Ordered NER providers. "regex" is built in; "spacy"/"llm" are pluggable
     // later behind the same seam (src/processing/ner/).

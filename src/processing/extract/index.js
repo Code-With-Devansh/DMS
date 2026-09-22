@@ -65,8 +65,12 @@ export function createExtractor({ ocrClient, minCharsPerPage = 100 }) {
   }
 
   async function fromOcr({ buffer, fileName, mimeType }) {
-    const { text, confidence, pageCount } = await ocrClient.ocr({ buffer, fileName, mimeType });
-    return { text: text ?? "", method: "ocr_tesseract", confidence, pageCount, mimeType };
+    const { text, confidence, pageCount, engine } = await ocrClient.ocr({ buffer, fileName, mimeType });
+    // engine is set by createFallbackOcrClient when a cloud OCR call actually
+    // served the result, so extraction_method stays an accurate audit trail
+    // of whether bytes left the box for this document (see
+    // src/processing/ocr/fallbackOcrClient.js).
+    return { text: text ?? "", method: engine === "cloud" ? "ocr_cloud" : "ocr_tesseract", confidence, pageCount, mimeType };
   }
 
   async function fromDocx({ buffer, mimeType }) {

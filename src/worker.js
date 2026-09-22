@@ -19,6 +19,8 @@ import {
 import { startProcessingReconciler } from "./jobs/documentProcessing.reconcile.js";
 import { createClamAvScanner } from "./processing/clamav.js";
 import { createTesseractOcrClient } from "./processing/ocr/tesseractClient.js";
+import { createCloudOcrClient } from "./processing/ocr/cloudOcrClient.js";
+import { createFallbackOcrClient } from "./processing/ocr/fallbackOcrClient.js";
 import { createExtractor } from "./processing/extract/index.js";
 import { normalizeText } from "./processing/normalize.js";
 import { createNerPipeline } from "./processing/ner/index.js";
@@ -77,7 +79,16 @@ worker.on("error", (err) => {
 // to READY (or QUARANTINED/FAILED). The per-stage collaborators (scanner /
 // extractText / nerPipeline / tagger) are added incrementally; until wired the
 // processor's pass-through defaults apply.
-const ocrClient = createTesseractOcrClient(config.processing.ocr);
+const localOcr = createTesseractOcrClient(config.processing.ocr);
+// PROTOTYPE: only escalates to the cloud OCR API if OCR_CLOUD_API_KEY is set
+// — unset it to keep OCR fully local, no code change needed.
+const ocrClient = config.processing.ocrCloud.apiKey
+  ? createFallbackOcrClient({
+      primary: localOcr,
+      fallback: createCloudOcrClient(config.processing.ocrCloud),
+      confidenceThreshold: config.processing.ocrCloud.confidenceThreshold,
+    })
+  : localOcr;
 const { extractText } = createExtractor({
   ocrClient,
   minCharsPerPage: config.processing.ocr.minCharsPerPage,

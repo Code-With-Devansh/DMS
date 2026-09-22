@@ -1,0 +1,58 @@
+# Runs on its own VM (the "clamav VM"), separate from the app/worker VM.
+# Deploy: `docker compose -f docker-compose.clamav.yml up -d` on that host.
+#
+# 1GB RAM budget: clamd's resident signature database is the dominant cost
+# (~300-500MB baseline, growing slowly as ClamAV's signature set grows), on
+# top of whatever the OS + Docker itself needs. The tuning below trades away
+# concurrency (MaxThreads) and per-file allowance (StreamMaxLength) — neither
+# of which this app needs much of, since it only ever has one worker process
+# scanning one file at a time — to keep total memory predictable rather than
+# bursting under concurrent load.
+#
+# Reachable ONLY from the app VM's private IP inside the OCI VCN — no public
+# IP on this VM, and the OCI Network Security Group additionally restricts
+# ingress on 3310 to the app VM's NSG. See ops/clamav-vm-network.md for the
+# OCI-side network setup this depends on. clamd's own protocol has no
+# authentication, so the network boundary IS the access control here — do not
+# expose 3310 beyond the private network under any circumstance.
+services:
+  clamav:
+    image: clamav/clamav:1.3
+    container_name: clamav
+    restart: unless-stopped
+    ports:
+      # Bind to the VM's private interface only — never 0.0.0.0. Replace with
+      # this VM's actual OCI private IP (or leave as-is and rely solely on the
+      # NSG/Security List if you'd rather not hardcode it here).
+      - "${CLAMAV_BIND_IP:-0.0.0.0}:3310:3310"
+    environment:
+      # clamav/clamav's entrypoint writes any CLAMD_CONF_<Directive> env var
+      # into clamd.conf, and FRESHCLAM_CONF_<Directive> into freshclam.conf.
+      CLAMD_CONF_MaxThreads: "2" # this app only ever sends one file at a time
+      CLAMD_CONF_MaxConnectionQueueLength: "4"
+      CLAMD_CONF_StreamMaxLength: "50M" # matches PROCESSING_MAX_FILE_BYTES in the app's .env
+      CLAMD_CONF_ReadTimeout: "120"
+      CLAMD_CONF_MaxScanSize: "100M"
+      CLAMD_CONF_MaxFileSize: "50M"
+      # Cuts idle memory further: skip archive/PDF-internals deep scanning at
+      # the clamd layer (the app's own type-sniff + pipeline already rejects
+      # disallowed types before bytes ever reach here).
+      CLAMD_CONF_MaxScanTime: "60000"
+      FRESHCLAM_CHECKS: "12" # signature update checks/day (freshclam default)
+    volumes:
+      - clamav_data:/var/lib/clamav
+    # Hard ceiling so a bad scan (e.g. a zip bomb slipping past MaxScanSize)
+    # can't take the whole 1GB VM down with it. Leaves ~250MB for the OS.
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 180s # first boot downloads the full signature set — slow on a 1GB VM
+
+volumes:
+  clamav_data:

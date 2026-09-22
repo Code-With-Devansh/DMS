@@ -78,8 +78,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      clamav:
-        condition: service_healthy
+      # No `clamav:` entry — it's no longer a service on this compose file/host.
+      # It runs on its own VM (docker-compose.clamav.yml); reachability is
+      # verified at runtime by the fail-closed scan() contract in
+      # src/processing/clamav.js (a connection failure throws -> job retries),
+      # not by a compose healthcheck that can't reach across hosts. Run
+      # `node scripts/check-clamav.js` after deploying to confirm connectivity
+      # before relying on it.
     networks:
       - internal
     environment:
@@ -93,29 +98,15 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
       STORAGE_SSE: ${STORAGE_SSE:-AES256}
-      CLAMAV_HOST: clamav
+      # Remote ClamAV VM's private IP (OCI VCN) — set CLAMAV_HOST in .env.
+      # Never point this at a public IP; see ops/clamav-vm-network.md.
+      CLAMAV_HOST: ${CLAMAV_HOST}
       CLAMAV_PORT: "3310"
     command: node src/worker.js
-
-  clamav:
-    image: clamav/clamav:1.3
-    container_name: DMS-clamav
-    restart: unless-stopped
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 120s
-    volumes:
-      - clamav_data:/var/lib/clamav
 
 volumes:
   postgres_data:
   redis_data:
-  clamav_data:
 
 networks:
   internal:
