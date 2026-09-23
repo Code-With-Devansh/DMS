@@ -112,7 +112,6 @@ CREATE TABLE "users" (
 	"mfa_enrolled" boolean DEFAULT false NOT NULL,
 	"mfa_temp_secret" text,
 	"mfa_secret" text,
-	"backup_codes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_login_at" timestamp with time zone,
 	"username" text NOT NULL,

@@ -1,5 +1,5 @@
 {
-  "id": "babff6ea-0ccc-4a3b-b413-5f61a55e0af2",
+  "id": "9a249786-4f11-43c3-9a6a-491eb3be7b58",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -994,12 +994,6 @@
         },
         "mfa_secret": {
           "name": "mfa_secret",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "backup_codes": {
-          "name": "backup_codes",
           "type": "text",
           "primaryKey": false,
           "notNull": false

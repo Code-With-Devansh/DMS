@@ -45,7 +45,6 @@ export const users = pgTable(
     //   used: boolean, // whether the code has been used
     // }
 
-    backupCodes: text("backup_codes"),
 
     // timestamps for auditing and security purposes
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -3,7 +3,6 @@ import speakeasy from "speakeasy";
 import qrcode from "qrcode";
 import { randomUUID } from "node:crypto";
 import { toMe } from "../mapper/user.mapper.js";
-import { generateBackupCodes } from "../utils/generateBackupCodes.js";
 import { badRequest, forbidden, invalidCredentials, notFound, unauthenticated, } from "../lib/errors.js";
 import {
     signAccessToken,
@@ -24,7 +23,6 @@ import {
     accessTokenKey,
     refreshTokenKey,
 } from "../utils/hashToken.js";
-import * as activationTokenRepo from "../repositories/activation-token.repository.js";
 import { activation_tokens, users } from "../db/schema/index.js";
 
 import { db } from "../db/index.js";
@@ -133,22 +131,12 @@ export async function verifyMfaEnrollment(userId, code) {
     });
 
     if (!verified) throw badRequest("Invalid MFA code");
-    const backupCodes = generateBackupCodes(8);
-    const hashedCodes = await Promise.all(
-        backupCodes.map(async (code) => {
-            const hash = await argon2.hash(code);
-            return { codeHash: hash, used: false };
-        })
-    );
-    const stringifiedCodes = JSON.stringify(hashedCodes);
-
 
     const refreshToken = signRefreshToken({ sub: user.id, username: user.username });
     const accessToken = signAccessToken({ sub: user.id, username: user.username, role: user.role });
     await userRepository.completeMfaEnrollment({
         userId,
         tempSecret: user.mfaTempSecret,
-        backupCodes: stringifiedCodes,
         refreshToken,
     });
     const freshUser = await userRepository.findById(userId);
@@ -162,7 +150,7 @@ export async function verifyMfaEnrollment(userId, code) {
         "EX": Math.round(accessExpiryTime)
     });
 
-    return { backupCodes, user: toMe(freshUser), accessToken, refreshToken };
+    return { user: toMe(freshUser), accessToken, refreshToken };
 }
 
 // Regular login MFA step: verify a code against the active secret and issue tokens.

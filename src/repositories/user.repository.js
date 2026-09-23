@@ -82,7 +82,7 @@ class UserRepository {
         await db.update(users).set({ mfaTempSecret }).where(eq(users.id, id));
     }
 
-    async completeMfaEnrollment({ userId, tempSecret, backupCodes, refreshToken }) {
+    async completeMfaEnrollment({ userId, tempSecret, refreshToken }) {
         const expiresAt = getRefreshExpiryTime(refreshToken) * 1000;
         return db.transaction(async (tx) => {
             await tx.update(users).set({
@@ -90,7 +90,6 @@ class UserRepository {
                 mfaSecret: tempSecret,
                 mfaEnrolled: true,
                 lastLoginAt: new Date(),
-                backupCodes,
             }).where(eq(users.id, userId));
 
             const existingToken = await tx.select().from(refreshTokens).where(eq(refreshTokens.userId, userId)).limit(1);

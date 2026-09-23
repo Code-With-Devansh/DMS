@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1789230439513,
-      "tag": "0000_rainy_the_fury",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1789230439514,
-      "tag": "0002_version_control",
+      "when": 1790131401895,
+      "tag": "0000_tired_abomination",
       "breakpoints": true
     }
   ]

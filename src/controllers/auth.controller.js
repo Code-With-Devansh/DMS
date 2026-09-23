@@ -77,10 +77,10 @@ export async function verifyMfaEnrollment(req, res) {
         throw badRequest("Invalid MFA token");
     }
 
-    const { backupCodes, user, accessToken, refreshToken } = await service.verifyMfaEnrollment(userId, code);
+    const { user, accessToken, refreshToken } = await service.verifyMfaEnrollment(userId, code);
     clearMfaCookie(res);
     setRefreshCookie(res, refreshToken);
-    return res.status(200).json({ backUpCodes: backupCodes, user, accessToken });
+    return res.status(200).json({ user, accessToken });
 }
 
 // POST /mfa/verify — regular-login MFA step. Same cookie handoff as enrollment:
