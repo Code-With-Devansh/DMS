@@ -10,7 +10,7 @@ class UnrecoverableErrorFallback extends Error {
 
 // Document-intelligence job processing, as a PURE factory over injected
 // dependencies — same discipline as ledgerAnchor.processor.js: no top-level
-// imports of the DB, storage, ClamAV or the OCR service, so the state-machine
+// imports of the DB, storage, scanner or the OCR service, so the state-machine
 // logic is unit-testable with fakes. src/worker.js wires the real singletons.
 //
 // processing_status state machine (document_versions + mirrored on
@@ -105,8 +105,10 @@ export function createDocumentProcessingProcessor({
     const { body } = await storage.getObject(version.storageKey);
     const buffer = await streamToBuffer(body, maxFileBytes, UnrecoverableError);
 
-    // ── Stage 1: ClamAV. Fail-CLOSED — a scanner error propagates so BullMQ
-    // retries; nothing downstream runs without a clean verdict. ──────────────
+    // ── Stage 1: scan (scanner is injected — see worker.js for which one is
+    // wired in right now: real ClamAV detection, or the prototype's
+    // rules-only type/format checks with no malware detection at all).
+    // scan.scanMethod records which one actually ran, per document. ─────────
     const scan = await scanner.scan(buffer, {
       versionId,
       declaredMimeType: version.mimeType,
@@ -119,6 +121,7 @@ export function createDocumentProcessingProcessor({
           fields: {
             status: "QUARANTINED",
             scannedClean: false,
+            scanMethod: scan.scanMethod ?? "unknown",
             virusSignature: scan.signature ?? "unknown",
             mimeType: scan.mimeType ?? version.mimeType,
             error: `quarantined: ${scan.signature ?? "malware detected"}`,
@@ -150,6 +153,7 @@ export function createDocumentProcessingProcessor({
         fields: {
           status: "EXTRACTING",
           scannedClean: true,
+          scanMethod: scan?.scanMethod ?? "unknown",
           mimeType: scan?.mimeType ?? version.mimeType,
         },
       }),

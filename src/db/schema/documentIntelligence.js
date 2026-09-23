@@ -18,7 +18,8 @@ import { processingStatus } from "./enums.js";
 // document_extractions: one row per document_version, holding everything the
 // async intelligence pipeline (src/jobs/documentProcessing.processor.js)
 // produces that isn't a first-class entity — the extracted text, how it was
-// obtained, the ClamAV verdict, per-stage status, and tag provenance.
+// obtained, the scan verdict (and by which scanner — see scan_method),
+// per-stage status, and tag provenance.
 //
 // Kept OUT of document_versions on purpose: that table is immutable/append-only
 // (drizzle/0002_version_control.sql) and only whitelists a handful of mutable
@@ -59,9 +60,16 @@ export const documentExtractions = pgTable(
     // also unioned into documents.tags via repo.appendDocumentTags.
     tags: jsonb("tags").notNull().default(sql`'[]'::jsonb`),
 
-    // ClamAV outcome. scanned_clean stays false until the scan passes; the
-    // pipeline refuses to extract anything that isn't clean.
+    // Virus/type scan outcome. scanned_clean stays false until the scan
+    // passes; the pipeline refuses to extract anything that isn't clean.
+    // scan_method (drizzle/0004_scan_method.sql) records WHICH scanner
+    // produced this verdict — 'clamav' (real signature detection) or
+    // 'rules_only' (src/processing/ruleBasedScanner.js: type/format checks
+    // only, no malware detection at all). Read scanned_clean=true alongside
+    // scan_method, not alone — "clean" means something very different
+    // between the two.
     scannedClean: boolean("scanned_clean").notNull().default(false),
+    scanMethod: text("scan_method").notNull().default("clamav"),
     virusSignature: text("virus_signature"),
 
     error: text("error"),

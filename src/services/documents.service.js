@@ -157,7 +157,7 @@ export async function createDocument({ caseId, userId, ip, file, metadata }) {
     actor: userId,
   });
 
-  // Kick off the async intelligence pipeline (ClamAV -> extract/OCR -> NER ->
+  // Kick off the async intelligence pipeline (scan -> extract/OCR -> NER ->
   // auto-tag -> index). Fail-open, same as the anchor enqueue: a broker hiccup
   // leaves the version SCANNING for the worker's reconciliation sweep.
   // Same fail-open discipline as the ledger anchor enqueue above.
@@ -328,7 +328,7 @@ export async function getVersion(documentId, versionId) {
   return toVersionDTO(version);
 }
 
-// Document-intelligence results for one version: ClamAV verdict, extracted text,
+// Document-intelligence results for one version: scan verdict, extracted text,
 // entities and tags produced by the async pipeline
 // (src/jobs/documentProcessing.processor.js). GET /documents/:id/versions/:vid/extraction.
 export async function getVersionExtraction(documentId, versionId, { includeText = false } = {}) {

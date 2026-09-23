@@ -1,5 +1,5 @@
 // Text extraction (pipeline stage 2). Dispatches on the *sniffed* content type
-// (from the ClamAV stage) with a filename-extension fallback, and returns a
+// (from the scan stage) with a filename-extension fallback, and returns a
 // uniform shape regardless of source:
 //
 //   { text, method, confidence, pageCount, mimeType }

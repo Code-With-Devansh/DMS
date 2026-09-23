@@ -79,7 +79,7 @@ export default {
   // enqueue after an upload.
   processing: {
     // Master switch. When false, uploads skip enqueue (rows stay SCANNING) —
-    // for environments with no worker/ClamAV/OCR.
+    // for environments with no worker/scanner/OCR.
     enabled: (process.env.PROCESSING_ENABLED || "true") !== "false",
     queueName: process.env.PROCESSING_QUEUE_NAME || "document-processing",
     attempts: Number(process.env.PROCESSING_ATTEMPTS) || 3,
@@ -94,18 +94,11 @@ export default {
       Number(process.env.PROCESSING_MAX_FILE_BYTES) ||
       Number(process.env.UPLOAD_MAX_BYTES) ||
       52_428_800,
-    // Local ClamAV daemon (src/processing/clamav.js) — the default scanner.
-    // src/processing/cloudmersiveScanner.js is still in the tree as a
-    // prototype-only alternative (see virusScan below) but nothing wires it
-    // up unless you swap the import in worker.js back.
-    clamav: {
-      host: process.env.CLAMAV_HOST || "clamav",
-      port: Number(process.env.CLAMAV_PORT) || 3310,
-      timeoutMs: Number(process.env.CLAMAV_TIMEOUT_MS) || 30_000,
-    },
+    // No config needed for the default scanner (ruleBasedScanner.js — pure
+    // type/format checks, no external dependency).
     // PROTOTYPE, currently unused: Cloudmersive's hosted scan API — see
     // src/processing/cloudmersiveScanner.js for the trade-offs if you want to
-    // swap back to it (worker.js currently uses createClamAvScanner).
+    // swap to it (worker.js currently uses createRuleBasedScanner).
     virusScan: {
       apiKey: process.env.CLOUDMERSIVE_API_KEY,
       url: process.env.CLOUDMERSIVE_URL || "https://api.cloudmersive.com/virus/scan/file",
@@ -148,7 +141,6 @@ export default {
   // Document search now runs on Postgres itself (documents.search_vector,
   // drizzle/0003_search_fts.sql) — no separate search-service config block.
     app: {
-    corsOrigin: process.env.APP_URL_CORS,
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),
   },

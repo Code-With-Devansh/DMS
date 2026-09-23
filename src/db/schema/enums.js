@@ -37,7 +37,7 @@ export const integrityStatus = pgEnum("integrity_status", [
 // Per-version async pipeline state. The document-intelligence worker
 // (src/jobs/documentProcessing.processor.js) drives a version through:
 //   SCANNING -> EXTRACTING -> INDEXING (NER) -> TAGGING -> READY
-// Terminal off-ramps: QUARANTINED (ClamAV flagged the file or its real type is
+// Terminal off-ramps: QUARANTINED (the scanner flagged the file or its real type is
 // disallowed — never retried) and FAILED (a stage errored past its retries).
 // "OCR" predates the split of scanning/extraction and is kept for back-compat.
 export const processingStatus = pgEnum("processing_status", [

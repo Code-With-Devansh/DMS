@@ -17,7 +17,7 @@ import {
   createProcessingFailureHandler,
 } from "./jobs/documentProcessing.processor.js";
 import { startProcessingReconciler } from "./jobs/documentProcessing.reconcile.js";
-import { createClamAvScanner } from "./processing/clamav.js";
+import { createRuleBasedScanner } from "./processing/ruleBasedScanner.js";
 import { createTesseractOcrClient } from "./processing/ocr/tesseractClient.js";
 import { createCloudOcrClient } from "./processing/ocr/cloudOcrClient.js";
 import { createFallbackOcrClient } from "./processing/ocr/fallbackOcrClient.js";
@@ -74,7 +74,7 @@ worker.on("error", (err) => {
 });
 
 // ── Document-intelligence pipeline worker ────────────────────────────────────
-// Consumes src/jobs/documentProcessing.queue.js: ClamAV -> text extraction /
+// Consumes src/jobs/documentProcessing.queue.js: scan -> text extraction /
 // Tesseract OCR -> NER -> auto-tagging, driving document_versions.processing_status
 // to READY (or QUARANTINED/FAILED). The per-stage collaborators (scanner /
 // extractText / nerPipeline / tagger) are added incrementally; until wired the
@@ -103,7 +103,12 @@ const processingDeps = {
   TargetType,
   updateDocumentSearchIndex,
   maxFileBytes: config.processing.maxFileBytes,
-  scanner: createClamAvScanner(config.processing.clamav),
+  // PROTOTYPE: rules-only scanning (type/format checks, no malware
+  // detection) — see src/processing/ruleBasedScanner.js for exactly what
+  // this does and does not close off. To go back to real detection: restore
+  // a ClamAV client (removed) or wire up createCloudmersiveScanner, which is
+  // still in the tree, before this touches real casework.
+  scanner: createRuleBasedScanner(),
   extractText,
   normalizeText,
   nerPipeline: createNerPipeline({ providerIds: config.processing.nerProviders }),

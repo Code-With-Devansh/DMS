@@ -56,6 +56,7 @@ export function createCloudmersiveScanner({
         clean: false,
         signature: `Pipeline.DisallowedType.${sniffed?.mime ?? declared ?? "unknown"}`,
         mimeType: realMime,
+        scanMethod: "cloudmersive",
       };
     }
 
@@ -90,10 +91,10 @@ export function createCloudmersiveScanner({
     // { CleanResult: bool, FoundViruses: [{ FileName, VirusName }, ...] | null }
     const json = await res.json();
     if (json.CleanResult === true) {
-      return { clean: true, signature: null, mimeType: realMime };
+      return { clean: true, signature: null, mimeType: realMime, scanMethod: "cloudmersive" };
     }
     const names = (json.FoundViruses ?? []).map((v) => v.VirusName).filter(Boolean);
-    return { clean: false, signature: names[0] ?? "Cloudmersive.Detected", mimeType: realMime };
+    return { clean: false, signature: names[0] ?? "Cloudmersive.Detected", mimeType: realMime, scanMethod: "cloudmersive" };
   }
 
   // Reachability probe for logging/health. Cloudmersive has no documented
