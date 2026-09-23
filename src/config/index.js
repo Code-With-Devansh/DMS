@@ -141,6 +141,7 @@ export default {
   // Document search now runs on Postgres itself (documents.search_vector,
   // drizzle/0003_search_fts.sql) — no separate search-service config block.
     app: {
+    corsOrigin: process.env.APP_URL_CORS,
     env: process.env.NODE_ENV,
     port: Number(process.env.PORT),
   },
