@@ -10,8 +10,8 @@ import userRepository from "../repositories/user.repository.js";
 import refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as activationTokenRepo from "../repositories/activation-token.repository.js";
 import { activation_tokens } from "../db/schema/index.js";
-import { hashActivationToken, hashAccessToken } from "../utils/hashToken.js"
-
+import { hashActivationToken, accessTokenKey, refreshTokenKey } from "../utils/hashToken.js"
+import redisClient from "../config/redis.js";
 
 
 // Roles whose membership is governed by admin pools + quorum (GOVERNANCE.md),
@@ -173,6 +173,9 @@ export async function listSessions(actor, userId) {
 
 export async function revokeSession(actor, sessionId) {
     const session = await refreshTokenRepository.findById(sessionId);
+    if (!session) throw notFound("Session not found");
+    redisClient.del(refreshTokenKey(session.userId)); // Delete the session from Redis cache
+    redisClient.del(accessTokenKey(session.userId)); // Delete the access token from Redis cache
     if (!session) throw notFound("Session not found");
     await getUser(actor, session.userId);
     await refreshTokenRepository.revokeById(sessionId, session.userId);
