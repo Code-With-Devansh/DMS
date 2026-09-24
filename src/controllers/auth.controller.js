@@ -127,8 +127,18 @@ export async function refresh(req, res) {
     if (!userId) {
         throw notFound("Invalid refresh token");
     }
+    const refreshTokenHash = hashRefreshToken(refreshToken);
 
-    const storedRefreshTokenHash = await redisClient.get(refreshTokenKey(userId)) || (await refreshTokenRepository.findByUserId(userId)).tokenHash;
+    const redisHash = await redisClient.get(refreshTokenKey(userId));
+
+    let storedRefreshTokenHash = redisHash;
+
+    if (!storedRefreshTokenHash) {
+        const storedToken =
+            await refreshTokenRepository.findByUserId(userId);
+
+        storedRefreshTokenHash = storedToken?.tokenHash;
+    }
     if (!storedRefreshTokenHash || storedRefreshTokenHash !== hashRefreshToken(refreshToken)) {
         await service.revokeRefreshToken(userId);
         await redisClient.del(refreshTokenKey(userId));

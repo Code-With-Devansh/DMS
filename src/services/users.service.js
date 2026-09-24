@@ -49,7 +49,7 @@ export async function provisionUser(actor, data, ip) {
     let username = baseUsername;
     for (let suffix = 1; await userRepository.findByUsername(username); suffix += 1) username = `${baseUsername}-${suffix}`;
 
-    const activationToken = randomBytes(32).toString("hex");
+    const activationToken = randomBytes(32).toString("base64url");
     const hashedPassword = await argon2.hash(randomBytes(32).toString("base64url"));
 
     // Insert + audit atomically: no user row without its USER_PROVISIONED entry.
